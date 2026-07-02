@@ -1,0 +1,55 @@
+# PlatformIO and general IDE files
+.pio/
+.pioenvs/
+.piolibdeps/
+build/
+
+# Project-specific
+libdeps/
+lib/
+
+# Temp and cache
+.cache/
+*.log
+
+# Compiled binaries
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.d
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Tags
+tags
+
+# Keep src tracked, ignore common build artifacts at repo root too
+/.pio
+/.pioenvs
+
+# ESP32 / PlatformIO specifics
+# PlatformIO state and project files
+.pio/state
+.piolibdeps/
+
+# ESP-IDF / ESP32 build artifacts
+sdkconfig
+sdkconfig.old
+partitions.bin
+partitions.csv
+firmware.bin
+flash_log*
