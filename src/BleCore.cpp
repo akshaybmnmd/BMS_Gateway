@@ -1,8 +1,8 @@
 #include "BleCore.h"
 #include <NimBLEDevice.h>
 
-BmsData bms1Data = { 1, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, { 0 }, 0, 0 };
-BmsData bms2Data = { 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, { 0 }, 0, 0 };
+BmsData bms1Data = { 1, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, { 0 }, 0, 1 };
+BmsData bms2Data = { 2, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, { 0 }, 0, 1 };
 BmsData* activeBms = nullptr;
 
 NimBLEClient* pClient = nullptr;

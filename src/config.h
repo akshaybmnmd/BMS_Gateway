@@ -40,6 +40,12 @@ enum SystemStatus {
   STATUS_ERROR
 };
 
+enum GracePeriodStatus {
+  GRACE_NONE,     // BLE is connected, data is live
+  GRACE_ACTIVE,   // BLE dropped, operating safely on cached data (< 5 mins old)
+  GRACE_EXPIRED   // Timeout exceeded, data is dangerously stale
+};
+
 struct SystemMetrics {
   float netCurrent;
   float currentDelta;
@@ -51,6 +57,7 @@ struct SystemMetrics {
   float voltageDelta;
   float peakTemp;
   SystemStatus status;
+  GracePeriodStatus graceStatus;
   float acVoltage;
   float acCurrent;
   float acPower;

@@ -6,7 +6,8 @@
 
 TaskHandle_t DisplayTaskHandle = NULL;
 
-enum AppState {
+enum AppState
+{
   STATE_WAIT_INTERVAL,
   STATE_CONNECT_BMS1,
   STATE_DELAY_BMS1,
@@ -27,18 +28,19 @@ unsigned long lastAcRead = 0;
 
 const int BUTTON_PIN = 15;
 
-// Shared global view state used by the display task
 int currentView = 0;
 
 void evaluateContactorLogic();
-void displayWorker(void * parameter);
+void displayWorker(void *parameter);
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   metricsMutex = xSemaphoreCreateMutex();
-  if (metricsMutex == NULL) {
+  if (metricsMutex == NULL)
+  {
     Serial.println("[FATAL] Failed to create Mutex!");
     while (1);
   }
@@ -48,129 +50,172 @@ void setup() {
   setupAcSensors();
   setupBLE();
 
-  // Spawn the Display Worker onto Core 0 (Low priority background UI task)
   xTaskCreatePinnedToCore(
-    displayWorker,      // Function pointer
-    "DisplayTask",      // Task name string
-    4096,               // Stack depth in bytes
-    NULL,               // Task parameter input
-    1,                  // Task priority
-    &DisplayTaskHandle, // Task handle output
-    0                   // Pin task strictly to Core 0
-  );
+      displayWorker,
+      "DisplayTask",
+      4096,
+      NULL,
+      1,
+      &DisplayTaskHandle,
+      0);
 
   Serial.println("\n--- System Setup Complete. Waiting for initial interval... ---");
 }
 
-void loop() {
+void loop()
+{
   // Core 1 runs the BLE State Machine completely decoupled from display refreshes
-  switch (currentState) {
+  switch (currentState)
+  {
 
-    case STATE_WAIT_INTERVAL:
-      if (millis() - stateTimer >= READ_INTERVAL_MS) {
-        currentState = STATE_CONNECT_BMS1;
-      }
-      break;
+  case STATE_WAIT_INTERVAL:
+    if (millis() - stateTimer >= READ_INTERVAL_MS)
+    {
+      currentState = STATE_CONNECT_BMS1;
+    }
+    break;
 
-    case STATE_CONNECT_BMS1:
-      activeBms = &bms1Data;
-      if (connectAndSubscribe(BMS1_MAC)) {
-        stateTimer = millis();
-        currentState = STATE_DELAY_BMS1;
-      } else {
-        Serial.printf("[DEBUG %lu] BMS 1 connect failed. Jumping to Cooldown.\n", millis());
-        stateTimer = millis();
-        currentState = STATE_COOLDOWN;
-      }
-      break;
-
-    case STATE_DELAY_BMS1:
-      if (millis() - stateTimer >= 500) {
-        if (triggerBmsRead()) {
-          stateTimer = millis();
-          currentState = STATE_WAIT_BMS1_DATA;
-        } else {
-          disconnectBLE();
-          stateTimer = millis();
-          currentState = STATE_COOLDOWN;
-        }
-      }
-      break;
-
-    case STATE_WAIT_BMS1_DATA:
-      if (activeBms->dataReady) {
-        disconnectBLE();
-        stateTimer = millis();
-        currentState = STATE_COOLDOWN;
-      } else if (millis() - stateTimer >= TIMEOUT_MS) {
-        Serial.printf("[DEBUG %lu] BMS 1 Request Timed Out!\n", millis());
-        activeBms->isConnected = false;
-        disconnectBLE();
-        stateTimer = millis();
-        currentState = STATE_COOLDOWN;
-      }
-      break;
-
-    case STATE_COOLDOWN:
-      if (millis() - stateTimer >= COOLDOWN_MS) {
-        currentState = STATE_CONNECT_BMS2;
-      }
-      break;
-
-    case STATE_CONNECT_BMS2:
-      activeBms = &bms2Data;
-      if (connectAndSubscribe(BMS2_MAC)) {
-        stateTimer = millis();
-        currentState = STATE_DELAY_BMS2;
-      } else {
-        Serial.printf("[DEBUG %lu] BMS 2 connect failed. Jumping to Process Logic.\n", millis());
-        currentState = STATE_PROCESS_LOGIC;
-      }
-      break;
-
-    case STATE_DELAY_BMS2:
-      if (millis() - stateTimer >= 500) {
-        if (triggerBmsRead()) {
-          stateTimer = millis();
-          currentState = STATE_WAIT_BMS2_DATA;
-        } else {
-          disconnectBLE();
-          currentState = STATE_PROCESS_LOGIC;
-        }
-      }
-      break;
-
-    case STATE_WAIT_BMS2_DATA:
-      if (activeBms->dataReady) {
-        disconnectBLE();
-        currentState = STATE_PROCESS_LOGIC;
-      } else if (millis() - stateTimer >= TIMEOUT_MS) {
-        Serial.printf("[DEBUG %lu] BMS 2 Request Timed Out!\n", millis());
-        activeBms->isConnected = false;
-        disconnectBLE();
-        currentState = STATE_PROCESS_LOGIC;
-      }
-      break;
-
-    case STATE_PROCESS_LOGIC:
-      evaluateContactorLogic();
-      activeBms = nullptr;
+  case STATE_CONNECT_BMS1:
+    activeBms = &bms1Data;
+    if (connectAndSubscribe(BMS1_MAC))
+    {
       stateTimer = millis();
-      currentState = STATE_WAIT_INTERVAL;
-      break;
+      currentState = STATE_DELAY_BMS1;
+    }
+    else
+    {
+      Serial.printf("[DEBUG %lu] BMS 1 connect failed. Jumping to Cooldown.\n", millis());
+      stateTimer = millis();
+      currentState = STATE_COOLDOWN;
+    }
+    break;
+
+  case STATE_DELAY_BMS1:
+    if (millis() - stateTimer >= 500)
+    {
+      if (triggerBmsRead())
+      {
+        stateTimer = millis();
+        currentState = STATE_WAIT_BMS1_DATA;
+      }
+      else
+      {
+        disconnectBLE();
+        stateTimer = millis();
+        currentState = STATE_COOLDOWN;
+      }
+    }
+    break;
+
+  case STATE_WAIT_BMS1_DATA:
+    if (activeBms->dataReady)
+    {
+      disconnectBLE();
+      stateTimer = millis();
+      currentState = STATE_COOLDOWN;
+    }
+    else if (millis() - stateTimer >= TIMEOUT_MS)
+    {
+      Serial.printf("[DEBUG %lu] BMS 1 Request Timed Out!\n", millis());
+      activeBms->isConnected = false;
+      disconnectBLE();
+      stateTimer = millis();
+      currentState = STATE_COOLDOWN;
+    }
+    break;
+
+  case STATE_COOLDOWN:
+    if (millis() - stateTimer >= COOLDOWN_MS)
+    {
+      currentState = STATE_CONNECT_BMS2;
+    }
+    break;
+
+  case STATE_CONNECT_BMS2:
+    activeBms = &bms2Data;
+    if (connectAndSubscribe(BMS2_MAC))
+    {
+      stateTimer = millis();
+      currentState = STATE_DELAY_BMS2;
+    }
+    else
+    {
+      Serial.printf("[DEBUG %lu] BMS 2 connect failed. Jumping to Process Logic.\n", millis());
+      currentState = STATE_PROCESS_LOGIC;
+    }
+    break;
+
+  case STATE_DELAY_BMS2:
+    if (millis() - stateTimer >= 500)
+    {
+      if (triggerBmsRead())
+      {
+        stateTimer = millis();
+        currentState = STATE_WAIT_BMS2_DATA;
+      }
+      else
+      {
+        disconnectBLE();
+        currentState = STATE_PROCESS_LOGIC;
+      }
+    }
+    break;
+
+  case STATE_WAIT_BMS2_DATA:
+    if (activeBms->dataReady)
+    {
+      disconnectBLE();
+      currentState = STATE_PROCESS_LOGIC;
+    }
+    else if (millis() - stateTimer >= TIMEOUT_MS)
+    {
+      Serial.printf("[DEBUG %lu] BMS 2 Request Timed Out!\n", millis());
+      activeBms->isConnected = false;
+      disconnectBLE();
+      currentState = STATE_PROCESS_LOGIC;
+    }
+    break;
+
+  case STATE_PROCESS_LOGIC:
+    readAcSensors();
+    evaluateContactorLogic();
+    activeBms = nullptr;
+    stateTimer = millis();
+    currentState = STATE_WAIT_INTERVAL;
+    break;
   }
 }
 
-void evaluateContactorLogic() {
-  if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+void evaluateContactorLogic()
+{
+  if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+  {
     const unsigned long STALE_TIMEOUT_MS = 5 * 60 * 1000;
     unsigned long currentMillis = millis();
 
     bool bms1Valid = (bms1Data.lastUpdateTime > 0) && (currentMillis - bms1Data.lastUpdateTime < STALE_TIMEOUT_MS);
     bool bms2Valid = (bms2Data.lastUpdateTime > 0) && (currentMillis - bms2Data.lastUpdateTime < STALE_TIMEOUT_MS);
 
-    if (bms1Valid && bms2Valid) {
-      if (!bms1Data.isConnected || !bms2Data.isConnected) {
+    bool bms1Live = bms1Valid && bms1Data.isConnected;
+    bool bms2Live = bms2Valid && bms2Data.isConnected;
+
+    if (bms1Live && bms2Live)
+    {
+      sysMetrics.graceStatus = GRACE_NONE;
+    }
+    else if (bms1Valid && bms2Valid)
+    {
+      sysMetrics.graceStatus = GRACE_ACTIVE;
+    }
+    else
+    {
+      sysMetrics.graceStatus = GRACE_EXPIRED;
+    }
+
+    if (sysMetrics.graceStatus != GRACE_EXPIRED)
+    {
+      if (sysMetrics.graceStatus == GRACE_ACTIVE)
+      {
         Serial.println("\n[WARNING] BLE connection lost. Operating on cached BMS data (Grace Period).");
       }
 
@@ -187,11 +232,14 @@ void evaluateContactorLogic() {
       sysMetrics.acCurrent = acCurrent;
       sysMetrics.acPower = acVoltage * acCurrent;
 
-      if (sysMetrics.netCurrent > 1.0) sysMetrics.status = STATUS_CHARGING;
-      else if (sysMetrics.netCurrent < -1.0) sysMetrics.status = STATUS_DISCHARGING;
-      else sysMetrics.status = STATUS_IDLE;
+      if (sysMetrics.netCurrent > 1.0)
+        sysMetrics.status = STATUS_CHARGING;
+      else if (sysMetrics.netCurrent < -1.0)
+        sysMetrics.status = STATUS_DISCHARGING;
+      else
+        sysMetrics.status = STATUS_IDLE;
 
-      // FIXED: Debug logging pulled outside the raw serial statement blocks 
+      // FIXED: Debug logging pulled outside the raw serial statement blocks
       Serial.println("\n================ SYSTEM METRICS ================");
       Serial.printf("STATUS   : %s\n", statusToString(sysMetrics.status));
       Serial.println("------------------------------------------------");
@@ -203,57 +251,69 @@ void evaluateContactorLogic() {
       Serial.printf("AC SENSE : %.1fV | %.2fA | %.0f VA\n", sysMetrics.acVoltage, sysMetrics.acCurrent, sysMetrics.acPower);
       Serial.printf("HEALTH   : Avg SoC %d%% (Imb %d%%) | Peak Temp %.1fC\n", sysMetrics.avgSoc, sysMetrics.socDelta, sysMetrics.peakTemp);
       Serial.println("================================================\n");
-
-    } else {
+    }
+    else
+    {
       sysMetrics.status = STATUS_ERROR;
       Serial.println("\n[CRITICAL ERROR] BMS Data Timeout (5+ min). Defaulting to safe state.");
       // digitalWrite(CONTACTOR_PIN, LOW);
     }
-    
+
     // FIXED: Moved outside the if/else block. Mutex is guaranteed to release in all scenarios!
-    xSemaphoreGive(metricsMutex); 
-  } else {
+    xSemaphoreGive(metricsMutex);
+  }
+  else
+  {
     Serial.println("[WARN] Core 1 failed to acquire Mutex!");
   }
 }
 
 // Thread safe, low priority background UI monitor locked to Core 0
-void displayWorker(void * parameter) {
-  const unsigned long VIEW_INTERVAL = 10000;
+void displayWorker(void *parameter)
+{
+  *-const unsigned long VIEW_INTERVAL = 10000;
   const unsigned long DEBOUNCE_DELAY = 50;
-  
+
   unsigned long lastViewChange = millis();
   unsigned long lastDebounceTime = 0;
   bool lastButtonState = HIGH;
   bool buttonProcessed = false;
 
-  for(;;) {
+  for (;;)
+  {
     bool advanceView = false;
     unsigned long currentMillis = millis();
 
     // 1. Timer-Based Auto Rotate
-    if (currentMillis - lastViewChange >= VIEW_INTERVAL) {
+    if (currentMillis - lastViewChange >= VIEW_INTERVAL)
+    {
       advanceView = true;
     }
 
     // 2. Physical Debounced Button Read
     bool reading = digitalRead(BUTTON_PIN);
-    if (reading != lastButtonState) {
+    if (reading != lastButtonState)
+    {
       lastDebounceTime = currentMillis;
     }
 
-    if ((currentMillis - lastDebounceTime) > DEBOUNCE_DELAY) {
-      if (reading == LOW && !buttonProcessed) {
+    if ((currentMillis - lastDebounceTime) > DEBOUNCE_DELAY)
+    {
+      if (reading == LOW && !buttonProcessed)
+      {
         advanceView = true;
         buttonProcessed = true;
-      } else if (reading == HIGH) {
+      }
+      else if (reading == HIGH)
+      {
         buttonProcessed = false;
       }
     }
     lastButtonState = reading;
 
     // 3. Process View Layout Wrap-Around
-    if (advanceView) {
+    if (advanceView)
+    {
       currentView = (currentView + 1) % 4; // Max 4 views (0 through 3)
       lastViewChange = currentMillis;
     }
@@ -262,14 +322,16 @@ void displayWorker(void * parameter) {
     SystemMetrics localMetricsSnapshot;
     bool snapshotValid = false;
 
-    if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    {
       localMetricsSnapshot = sysMetrics;
       xSemaphoreGive(metricsMutex);
       snapshotValid = true;
     }
 
     // 5. Draw outside the critical section to prevent clogging Core 1
-    if (snapshotValid) {
+    if (snapshotValid)
+    {
       updateDisplay(localMetricsSnapshot, currentView);
     }
 

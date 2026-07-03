@@ -11,6 +11,12 @@ const char* shortStatus(SystemStatus s) {
   return "ERR";
 }
 
+const char* graceStatusToString(GracePeriodStatus g) {
+  if (g == GRACE_NONE) return "NONE-LIVE";
+  if (g == GRACE_ACTIVE) return "ACTIVE!";
+  return "EXPIRED";
+}
+
 void setupDisplay() {
   u8g2.begin();
   u8g2.setContrast(150);
@@ -95,7 +101,7 @@ void drawSystemTimersScreen(const SystemMetrics& metrics) {
   sprintf(buf, "Mem Free: %u KB", ESP.getFreeHeap() / 1024);
   u8g2.drawStr(0, 51, buf);
 
-  sprintf(buf, "Grace Tmr: STANDBY");
+  sprintf(buf, "Grace Tmr: %s", graceStatusToString(metrics.graceStatus));
   u8g2.drawStr(0, 64, buf);
 }
 
