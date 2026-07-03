@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "Config.h"
 #include "BleCore.h"
+#include "DataLogger.h"
 #include "AcSensorCore.h"
 #include "DisplayDriver.h"
 
@@ -26,6 +27,9 @@ AppState currentState = STATE_CONNECT_BMS1;
 unsigned long stateTimer = 0;
 unsigned long lastAcRead = 0;
 
+unsigned long lastLogTime = 0;
+const unsigned long LOG_INTERVAL_MS = 5 * 60 * 1000;
+
 const int BUTTON_PIN = 15;
 
 int currentView = 0;
@@ -42,7 +46,8 @@ void setup()
   if (metricsMutex == NULL)
   {
     Serial.println("[FATAL] Failed to create Mutex!");
-    while (1);
+    while (1)
+      ;
   }
 
   setupDisplay();
@@ -51,6 +56,7 @@ void setup()
   setupBLE();
 
   xTaskCreatePinnedToCore(
+<<<<<<< HEAD
       displayWorker,
       "DisplayTask",
       4096,
@@ -58,6 +64,16 @@ void setup()
       1,
       &DisplayTaskHandle,
       0);
+=======
+      displayWorker,      // Function pointer
+      "DisplayTask",      // Task name string
+      4096,               // Stack depth in bytes
+      NULL,               // Task parameter input
+      1,                  // Task priority
+      &DisplayTaskHandle, // Task handle output
+      0                   // Pin task strictly to Core 0
+  );
+>>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
 
   Serial.println("\n--- System Setup Complete. Waiting for initial interval... ---");
 }
@@ -177,7 +193,10 @@ void loop()
     break;
 
   case STATE_PROCESS_LOGIC:
+<<<<<<< HEAD
     readAcSensors();
+=======
+>>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
     evaluateContactorLogic();
     activeBms = nullptr;
     stateTimer = millis();
@@ -196,6 +215,7 @@ void evaluateContactorLogic()
     bool bms1Valid = (bms1Data.lastUpdateTime > 0) && (currentMillis - bms1Data.lastUpdateTime < STALE_TIMEOUT_MS);
     bool bms2Valid = (bms2Data.lastUpdateTime > 0) && (currentMillis - bms2Data.lastUpdateTime < STALE_TIMEOUT_MS);
 
+<<<<<<< HEAD
     bool bms1Live = bms1Valid && bms1Data.isConnected;
     bool bms2Live = bms2Valid && bms2Data.isConnected;
 
@@ -215,6 +235,11 @@ void evaluateContactorLogic()
     if (sysMetrics.graceStatus != GRACE_EXPIRED)
     {
       if (sysMetrics.graceStatus == GRACE_ACTIVE)
+=======
+    if (bms1Valid && bms2Valid)
+    {
+      if (!bms1Data.isConnected || !bms2Data.isConnected)
+>>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
       {
         Serial.println("\n[WARNING] BLE connection lost. Operating on cached BMS data (Grace Period).");
       }
@@ -239,6 +264,15 @@ void evaluateContactorLogic()
       else
         sysMetrics.status = STATUS_IDLE;
 
+<<<<<<< HEAD
+=======
+      if (millis() - lastLogTime >= LOG_INTERVAL_MS)
+      {
+        logMetricsToFlash(sysMetrics);
+        lastLogTime = millis();
+      }
+
+>>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
       // FIXED: Debug logging pulled outside the raw serial statement blocks
       Serial.println("\n================ SYSTEM METRICS ================");
       Serial.printf("STATUS   : %s\n", statusToString(sysMetrics.status));
@@ -271,7 +305,11 @@ void evaluateContactorLogic()
 // Thread safe, low priority background UI monitor locked to Core 0
 void displayWorker(void *parameter)
 {
+<<<<<<< HEAD
   *-const unsigned long VIEW_INTERVAL = 10000;
+=======
+  const unsigned long VIEW_INTERVAL = 10000;
+>>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
   const unsigned long DEBOUNCE_DELAY = 50;
 
   unsigned long lastViewChange = millis();
