@@ -31,6 +31,10 @@ unsigned long lastLogTime = 0;
 const unsigned long LOG_INTERVAL_MS = 5 * 60 * 1000;
 
 const int BUTTON_PIN = 15;
+const int FAN_PIN = 13;
+const int FAN_PWM_CHANNEL = 0; 
+const int FAN_PWM_FREQ = 25000; // 25 kHz pushes coil whine above human hearing
+const int FAN_PWM_RES = 8;      // 8-bit resolution (0-255)
 
 int currentView = 0;
 
@@ -56,7 +60,6 @@ void setup()
   setupBLE();
 
   xTaskCreatePinnedToCore(
-<<<<<<< HEAD
       displayWorker,
       "DisplayTask",
       4096,
@@ -64,16 +67,6 @@ void setup()
       1,
       &DisplayTaskHandle,
       0);
-=======
-      displayWorker,      // Function pointer
-      "DisplayTask",      // Task name string
-      4096,               // Stack depth in bytes
-      NULL,               // Task parameter input
-      1,                  // Task priority
-      &DisplayTaskHandle, // Task handle output
-      0                   // Pin task strictly to Core 0
-  );
->>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
 
   Serial.println("\n--- System Setup Complete. Waiting for initial interval... ---");
 }
@@ -193,10 +186,7 @@ void loop()
     break;
 
   case STATE_PROCESS_LOGIC:
-<<<<<<< HEAD
     readAcSensors();
-=======
->>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
     evaluateContactorLogic();
     activeBms = nullptr;
     stateTimer = millis();
@@ -212,13 +202,14 @@ void evaluateContactorLogic()
     const unsigned long STALE_TIMEOUT_MS = 5 * 60 * 1000;
     unsigned long currentMillis = millis();
 
+    // 1. Evaluate individual data validity
     bool bms1Valid = (bms1Data.lastUpdateTime > 0) && (currentMillis - bms1Data.lastUpdateTime < STALE_TIMEOUT_MS);
     bool bms2Valid = (bms2Data.lastUpdateTime > 0) && (currentMillis - bms2Data.lastUpdateTime < STALE_TIMEOUT_MS);
 
-<<<<<<< HEAD
     bool bms1Live = bms1Valid && bms1Data.isConnected;
     bool bms2Live = bms2Valid && bms2Data.isConnected;
 
+    // 2. Set explicit Grace Period Status
     if (bms1Live && bms2Live)
     {
       sysMetrics.graceStatus = GRACE_NONE;
@@ -232,16 +223,12 @@ void evaluateContactorLogic()
       sysMetrics.graceStatus = GRACE_EXPIRED;
     }
 
+    // 3. Act on the Status
     if (sysMetrics.graceStatus != GRACE_EXPIRED)
     {
       if (sysMetrics.graceStatus == GRACE_ACTIVE)
-=======
-    if (bms1Valid && bms2Valid)
-    {
-      if (!bms1Data.isConnected || !bms2Data.isConnected)
->>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
       {
-        Serial.println("\n[WARNING] BLE connection lost. Operating on cached BMS data (Grace Period).");
+        Serial.println("\n[WARNING] BLE connection lost. Operating in GRACE_ACTIVE state.");
       }
 
       sysMetrics.avgSoc = (bms1Data.soc + bms2Data.soc) / 2;
@@ -256,6 +243,32 @@ void evaluateContactorLogic()
       sysMetrics.acVoltage = acVoltage;
       sysMetrics.acCurrent = acCurrent;
       sysMetrics.acPower = acVoltage * acCurrent;
+      sysMetrics.acVoltage2 = acVoltage2;
+      sysMetrics.acCurrent2 = acCurrent2;
+      sysMetrics.acPower2 = acVoltage2 * acCurrent2;
+      sysMetrics.dcVoltage = dcVoltage;
+      sysMetrics.dcCurrent = dcCurrent;
+      sysMetrics.dcPower = dcPower;
+      sysMetrics.envTemp = envTemp;
+      sysMetrics.envHum  = envHum;
+      sysMetrics.envPres = envPres;
+
+      // --- SILENT FAN CONTROL LOGIC ---
+      int fanSpeed = 0;
+      
+      if (sysMetrics.envTemp >= 45.0) {
+        fanSpeed = 255; // 100% duty cycle (Maximum Cooling)
+      } 
+      else if (sysMetrics.envTemp >= 25.0) {
+        // Map 25C-45C to a 30%-100% duty cycle (roughly 80 to 255)
+        fanSpeed = map(sysMetrics.envTemp, 25.0, 45.0, 80, 255); 
+      } 
+      else {
+        fanSpeed = 0; // Off
+      }
+      
+      ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
+      // -----------------------------
 
       if (sysMetrics.netCurrent > 1.0)
         sysMetrics.status = STATUS_CHARGING;
@@ -264,21 +277,22 @@ void evaluateContactorLogic()
       else
         sysMetrics.status = STATUS_IDLE;
 
-<<<<<<< HEAD
-=======
       if (millis() - lastLogTime >= LOG_INTERVAL_MS)
       {
         logMetricsToFlash(sysMetrics);
         lastLogTime = millis();
       }
 
->>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
-      // FIXED: Debug logging pulled outside the raw serial statement blocks
       Serial.println("\n================ SYSTEM METRICS ================");
       Serial.printf("STATUS   : %s\n", statusToString(sysMetrics.status));
       Serial.println("------------------------------------------------");
       Serial.printf("BMS 1    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms1Data.voltage, bms1Data.current, bms1Data.power, bms1Data.soc, bms1Data.maxTemp);
       Serial.printf("BMS 2    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms2Data.voltage, bms2Data.current, bms2Data.power, bms2Data.soc, bms2Data.maxTemp);
+      Serial.println("------------------------------------------------");
+      Serial.printf("AC 1     : %.1fV | %.2fA | %.0fW\n", sysMetrics.acVoltage, sysMetrics.acCurrent, sysMetrics.acPower);
+      Serial.printf("AC 2     : %.1fV | %.2fA | %.0fW\n", sysMetrics.acVoltage2, sysMetrics.acCurrent2, sysMetrics.acPower2);
+      Serial.printf("PZEM DC  : %.1fV | %.2fA | %.1fW\n", sysMetrics.dcVoltage, sysMetrics.dcCurrent, sysMetrics.dcPower);
+      Serial.printf("ENV      : Temp: %.1fC | Hum: %.1f%% | Pres: %.1fhPa\n", sysMetrics.envTemp, sysMetrics.envHum, sysMetrics.envPres);
       Serial.println("------------------------------------------------");
       Serial.printf("DELTAS   : Volt:%.3fV | Cur:%.2fA | Pwr:%.0fW\n", sysMetrics.voltageDelta, sysMetrics.currentDelta, sysMetrics.powerDelta);
       Serial.printf("DC TOTAL : Net: %6.2fA | %5.0fW\n", sysMetrics.netCurrent, sysMetrics.netPower);
@@ -305,11 +319,7 @@ void evaluateContactorLogic()
 // Thread safe, low priority background UI monitor locked to Core 0
 void displayWorker(void *parameter)
 {
-<<<<<<< HEAD
-  *-const unsigned long VIEW_INTERVAL = 10000;
-=======
-  const unsigned long VIEW_INTERVAL = 10000;
->>>>>>> ec9ce30e0fdb6c1e83324da69dc517aeb891b073
+  const unsigned long VIEW_INTERVAL = 5000;
   const unsigned long DEBOUNCE_DELAY = 50;
 
   unsigned long lastViewChange = millis();
@@ -352,7 +362,7 @@ void displayWorker(void *parameter)
     // 3. Process View Layout Wrap-Around
     if (advanceView)
     {
-      currentView = (currentView + 1) % 4; // Max 4 views (0 through 3)
+      currentView = (currentView + 1) % 5; // Max 5 views (0 through 4)
       lastViewChange = currentMillis;
     }
 

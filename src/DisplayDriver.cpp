@@ -4,25 +4,34 @@
 
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, 22, 21);
 
-const char* shortStatus(SystemStatus s) {
-  if (s == STATUS_CHARGING) return "CHG";
-  if (s == STATUS_DISCHARGING) return "DIS";
-  if (s == STATUS_IDLE) return "IDL";
+const char *shortStatus(SystemStatus s)
+{
+  if (s == STATUS_CHARGING)
+    return "CHG";
+  if (s == STATUS_DISCHARGING)
+    return "DIS";
+  if (s == STATUS_IDLE)
+    return "IDL";
   return "ERR";
 }
 
-const char* graceStatusToString(GracePeriodStatus g) {
-  if (g == GRACE_NONE) return "NONE-LIVE";
-  if (g == GRACE_ACTIVE) return "ACTIVE!";
+const char *graceStatusToString(GracePeriodStatus g)
+{
+  if (g == GRACE_NONE)
+    return "NONE-LIVE";
+  if (g == GRACE_ACTIVE)
+    return "ACTIVE!";
   return "EXPIRED";
 }
 
-void setupDisplay() {
+void setupDisplay()
+{
   u8g2.begin();
   u8g2.setContrast(150);
 }
 
-void drawSplashScreen() {
+void drawSplashScreen()
+{
   u8g2.clearBuffer();
 
   u8g2.setFont(u8g2_font_profont15_tf);
@@ -35,7 +44,8 @@ void drawSplashScreen() {
   u8g2.sendBuffer();
 }
 
-void drawOverviewScreen(const SystemMetrics& metrics) {
+void drawOverviewScreen(const SystemMetrics &metrics)
+{
   char buf[32];
   sprintf(buf, "SYS: %s | AC: %.0fW", shortStatus(metrics.status), metrics.acPower);
   u8g2.drawStr(0, 10, buf);
@@ -53,7 +63,8 @@ void drawOverviewScreen(const SystemMetrics& metrics) {
   u8g2.drawStr(0, 62, buf);
 }
 
-void drawACDetailsScreen(const SystemMetrics& metrics) {
+void drawACDetailsScreen(const SystemMetrics &metrics)
+{
   char buf[32];
   u8g2.drawStr(0, 10, "-- AC GRID DIAG --");
 
@@ -67,7 +78,8 @@ void drawACDetailsScreen(const SystemMetrics& metrics) {
   u8g2.drawStr(0, 51, buf);
 }
 
-void drawHardwareFlagsScreen(const SystemMetrics& metrics) {
+void drawHardwareFlagsScreen(const SystemMetrics &metrics)
+{
   char buf[32];
   u8g2.drawStr(0, 10, "- HARDWARE FLAGS -");
 
@@ -77,14 +89,16 @@ void drawHardwareFlagsScreen(const SystemMetrics& metrics) {
   sprintf(buf, "BMS2 BLE: %s", bms2Data.isConnected ? "CONN" : "DROP");
   u8g2.drawStr(0, 38, buf);
 
-  sprintf(buf, "I2C ADC : %s", adsConnected ? "OK" : "ERR");
+  // CHANGED: Reflects Nano Serial connection instead of I2C ADC
+  sprintf(buf, "Nano RX : %s", nanoConnected ? "OK" : "ERR");
   u8g2.drawStr(0, 51, buf);
 
   sprintf(buf, "Relay   : %s", metrics.status == STATUS_ERROR ? "OPEN" : "CLOSED");
   u8g2.drawStr(0, 64, buf);
 }
 
-void drawSystemTimersScreen(const SystemMetrics& metrics) {
+void drawSystemTimersScreen(const SystemMetrics &metrics)
+{
   char buf[32];
   unsigned long upSec = millis() / 1000;
 
@@ -105,15 +119,43 @@ void drawSystemTimersScreen(const SystemMetrics& metrics) {
   u8g2.drawStr(0, 64, buf);
 }
 
-void updateDisplay(const SystemMetrics& metrics, int currentView) {
+void drawEnvironmentScreen(const SystemMetrics &metrics)
+{
+  char buf[32];
+  u8g2.drawStr(0, 10, "- ENVIRONMENT DATA -");
+
+  sprintf(buf, "Temp : %.1f C", metrics.envTemp);
+  u8g2.drawStr(0, 25, buf);
+
+  sprintf(buf, "Humid: %.1f %%", metrics.envHum);
+  u8g2.drawStr(0, 38, buf);
+
+  sprintf(buf, "Press: %.1f hPa", metrics.envPres);
+  u8g2.drawStr(0, 51, buf);
+}
+
+void updateDisplay(const SystemMetrics &metrics, int currentView)
+{
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_profont11_tf);
 
-  switch (currentView) {
-    case 0: drawOverviewScreen(metrics); break;
-    case 1: drawACDetailsScreen(metrics); break;
-    case 2: drawHardwareFlagsScreen(metrics); break;
-    case 3: drawSystemTimersScreen(metrics); break;
+  switch (currentView)
+  {
+  case 0:
+    drawOverviewScreen(metrics);
+    break;
+  case 1:
+    drawACDetailsScreen(metrics);
+    break;
+  case 2:
+    drawHardwareFlagsScreen(metrics);
+    break;
+  case 3:
+    drawSystemTimersScreen(metrics);
+    break;
+  case 4:
+    drawEnvironmentScreen(metrics);
+    break;
   }
 
   u8g2.sendBuffer();

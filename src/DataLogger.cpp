@@ -41,10 +41,14 @@ void logMetricsToFlash(const SystemMetrics &metrics)
     // 3. Write Data as CSV: Uptime, AC Volt, AC Power, DC Net Power, Avg SoC
     // Note: Since node 1 lacks Wi-Fi, it doesn't know real-world time.
     // We use millis() uptime. The Wi-Fi node will append real timestamps later.
-    file.printf("%lu,%.1f,%.0f,%.0f,%d\n",
+    file.printf("%lu,%.1f,%.0f,%.1f,%.0f,%.1f,%.1f,%.0f,%d\n",
                 millis() / 1000,
                 metrics.acVoltage,
                 metrics.acPower,
+                metrics.acVoltage2,
+                metrics.acPower2,
+                metrics.dcVoltage,
+                metrics.dcPower,
                 metrics.netPower,
                 metrics.avgSoc);
 

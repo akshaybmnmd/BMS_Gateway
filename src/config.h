@@ -60,7 +60,16 @@ struct SystemMetrics {
   GracePeriodStatus graceStatus;
   float acVoltage;
   float acCurrent;
+  float acVoltage2;
+  float acCurrent2;
+  float acPower2;
+  float dcVoltage;
+  float dcCurrent;
+  float dcPower;
   float acPower;
+  float envTemp;
+  float envHum;
+  float envPres;
 };
 
 static const char* statusToString(SystemStatus status) {

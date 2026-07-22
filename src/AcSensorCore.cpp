@@ -1,96 +1,79 @@
 #include "AcSensorCore.h"
-#include <Wire.h>
+#include <ArduinoJson.h>
 
-Adafruit_ADS1115 ads;
 float acVoltage = 0.0;
 float acCurrent = 0.0;
-bool adsConnected = false;
+float acVoltage2 = 0.0;
+float acCurrent2 = 0.0;
+float dcVoltage = 0.0;
+float dcCurrent = 0.0;
+float dcPower = 0.0;
+float envTemp = 0.0;
+float envHum = 0.0;
+float envPres = 0.0;
+bool nanoConnected = false;
 
-unsigned long lastAdsRetry = 0;
-
-float calibrationFactorV = 730.5f;
-float calibrationFactorI = 1.0;
-
-bool pingI2C(uint8_t address)
-{
-  Wire.beginTransmission(address);
-  return (Wire.endTransmission() == 0);
-}
+unsigned long lastSerialRx = 0;
 
 void setupAcSensors()
 {
-  Wire.begin();
-  Wire.setClock(400000);
-
-  ads.setGain(GAIN_ONE);
-  ads.setDataRate(RATE_ADS1115_860SPS);
-
-  if (!ads.begin())
-  {
-    Serial.println("[WARNING] ADS1115 not found at boot! AC Sensing disabled.");
-    adsConnected = false;
-  }
-  else
-  {
-    Serial.println("[INFO] ADS1115 Initialized successfully.");
-    adsConnected = true;
-  }
+  // ESP32 Hardware Serial 2 maps to RX:16 and TX:17 by default
+  Serial2.begin(9600, SERIAL_8N1, 16, 17);
+  Serial.println("[INFO] UART2 Initialized on RX:16, TX:17 for Nano Telemetry.");
 }
 
 void readAcSensors()
 {
-  if (!adsConnected)
+  while (Serial2.available())
   {
-    if (millis() - lastAdsRetry > 10000)
+    String payload = Serial2.readStringUntil('\n');
+    payload.trim();
+
+    // Basic validation to ensure we are looking at a JSON string
+    if (payload.length() > 0 && payload.charAt(0) == '{')
     {
-      lastAdsRetry = millis();
-      if (ads.begin()) {
-        Serial.println("[INFO] ADS1115 Reconnected Successfully!");
-        adsConnected = true;
-      } else {
-        return;
+      StaticJsonDocument<384> doc;
+      DeserializationError error = deserializeJson(doc, payload);
+
+      if (!error)
+      {
+        // Map all incoming telemetry fields
+        acVoltage  = doc["acV1"] | 0.0f;
+        acCurrent  = doc["acI1"] | 0.0f;
+        acVoltage2 = doc["acV2"] | 0.0f;
+        acCurrent2 = doc["acI2"] | 0.0f;
+        dcVoltage  = doc["dcV"]  | 0.0f;
+        dcCurrent  = doc["dcI"]  | 0.0f;
+        dcPower    = doc["dcW"]  | 0.0f;
+        envTemp    = doc["tmp"]  | 0.0f;
+        envHum     = doc["hum"]  | 0.0f;
+        envPres    = doc["prs"]  | 0.0f;
+
+        nanoConnected = true;
+        lastSerialRx = millis();
       }
-    } else {
-      return; 
+      else
+      {
+        Serial.print("[ERROR] JSON Parse Failed: ");
+        Serial.println(error.c_str());
+      }
     }
   }
 
-  if (!pingI2C(0x48))
+  // Connection timeout safety net (5 seconds)
+  if (nanoConnected && (millis() - lastSerialRx > 5000))
   {
-    Serial.println("[ERROR] ADS1115 connection lost during runtime (Ping failed)!");
-    adsConnected = false;
+    Serial.println("[WARNING] Nano Serial Telemetry Timeout!");
+    nanoConnected = false;
     acVoltage = 0.0;
     acCurrent = 0.0;
-    return;
-  }
-
-  const int MAX_SAMPLES = 100; 
-  int16_t vSamples[MAX_SAMPLES];
-  
-  long sumV_DC = 0;
-  int countV = 0;
-
-  unsigned long startV = millis();
-  while (millis() - startV < 150 && countV < MAX_SAMPLES) {
-    vSamples[countV] = ads.readADC_SingleEnded(0);
-    sumV_DC += vSamples[countV];
-    countV++;
-  }
-
-  float trueMidV = (float)sumV_DC / countV;
-
-  double sumSqV = 0.0;
-  for (int i = 0; i < countV; i++) {
-    float v = (vSamples[i] - trueMidV) * 0.125 / 1000.0;
-    sumSqV += (v * v);
-  }
-
-  float rawRmsV = sqrt(sumSqV / countV);
-  float instantVoltage = rawRmsV * calibrationFactorV;
-
-  if (acVoltage == 0.0) {
-    acVoltage = instantVoltage; // Seed the filter on first boot
-  } else {
-    acVoltage = (acVoltage * 0.80) + (instantVoltage * 0.20);
+    acVoltage2 = 0.0;
+    acCurrent2 = 0.0;
+    dcVoltage = 0.0;
+    dcCurrent = 0.0;
+    dcPower = 0.0;
+    envTemp = 0.0;
+    envHum = 0.0;
+    envPres = 0.0;
   }
 }
