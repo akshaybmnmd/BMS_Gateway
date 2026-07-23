@@ -26,6 +26,7 @@ const char *graceStatusToString(GracePeriodStatus g)
 
 void setupDisplay()
 {
+  u8g2.setBusClock(400000);
   u8g2.begin();
   u8g2.setContrast(150);
 }
@@ -47,19 +48,19 @@ void drawSplashScreen()
 void drawOverviewScreen(const SystemMetrics &metrics)
 {
   char buf[32];
-  sprintf(buf, "SYS: %s | AC: %.0fW", shortStatus(metrics.status), metrics.acPower);
+  snprintf(buf, sizeof(buf), "SYS: %s | AC: %.0fW", shortStatus(metrics.status), metrics.acPower);
   u8g2.drawStr(0, 10, buf);
 
-  sprintf(buf, "B1: %.1fV %5.1fA %d%%", bms1Data.voltage, bms1Data.current, bms1Data.soc);
+  snprintf(buf, sizeof(buf), "B1: %.1fV %5.1fA %d%%", bms1Data.voltage, bms1Data.current, bms1Data.soc);
   u8g2.drawStr(0, 23, buf);
 
-  sprintf(buf, "B2: %.1fV %5.1fA %d%%", bms2Data.voltage, bms2Data.current, bms2Data.soc);
+  snprintf(buf, sizeof(buf), "B2: %.1fV %5.1fA %d%%", bms2Data.voltage, bms2Data.current, bms2Data.soc);
   u8g2.drawStr(0, 36, buf);
 
-  sprintf(buf, "NET: %.1fA (%.0fW)", metrics.netCurrent, metrics.netPower);
+  snprintf(buf, sizeof(buf), "NET: %.1fA (%.0fW)", metrics.netCurrent, metrics.netPower);
   u8g2.drawStr(0, 49, buf);
 
-  sprintf(buf, "Imb: %d%% | MaxT: %.1fC", metrics.socDelta, metrics.peakTemp);
+  snprintf(buf, sizeof(buf), "Imb: %d%% | MaxT: %.1fC", metrics.socDelta, metrics.peakTemp);
   u8g2.drawStr(0, 62, buf);
 }
 
@@ -68,13 +69,13 @@ void drawACDetailsScreen(const SystemMetrics &metrics)
   char buf[32];
   u8g2.drawStr(0, 10, "-- AC GRID DIAG --");
 
-  sprintf(buf, "Grid V: %.1f V", metrics.acVoltage);
+  snprintf(buf, sizeof(buf), "Grid V: %.1f V", metrics.acVoltage);
   u8g2.drawStr(0, 25, buf);
 
-  sprintf(buf, "Load I: %.2f A", metrics.acCurrent);
+  snprintf(buf, sizeof(buf), "Load I: %.2f A", metrics.acCurrent);
   u8g2.drawStr(0, 38, buf);
 
-  sprintf(buf, "Power : %.0f W", metrics.acPower);
+  snprintf(buf, sizeof(buf), "Power : %.0f W", metrics.acPower);
   u8g2.drawStr(0, 51, buf);
 }
 
@@ -83,17 +84,17 @@ void drawHardwareFlagsScreen(const SystemMetrics &metrics)
   char buf[32];
   u8g2.drawStr(0, 10, "- HARDWARE FLAGS -");
 
-  sprintf(buf, "BMS1 BLE: %s", bms1Data.isConnected ? "CONN" : "DROP");
+  snprintf(buf, sizeof(buf), "BMS1 BLE: %s", bms1Data.isConnected ? "CONN" : "DROP");
   u8g2.drawStr(0, 25, buf);
 
-  sprintf(buf, "BMS2 BLE: %s", bms2Data.isConnected ? "CONN" : "DROP");
+  snprintf(buf, sizeof(buf), "BMS2 BLE: %s", bms2Data.isConnected ? "CONN" : "DROP");
   u8g2.drawStr(0, 38, buf);
 
   // CHANGED: Reflects Nano Serial connection instead of I2C ADC
-  sprintf(buf, "Nano RX : %s", nanoConnected ? "OK" : "ERR");
+  snprintf(buf, sizeof(buf), "Nano RX : %s", nanoConnected ? "OK" : "ERR");
   u8g2.drawStr(0, 51, buf);
 
-  sprintf(buf, "Relay   : %s", metrics.status == STATUS_ERROR ? "OPEN" : "CLOSED");
+  snprintf(buf, sizeof(buf), "Relay   : %s", metrics.status == STATUS_ERROR ? "OPEN" : "CLOSED");
   u8g2.drawStr(0, 64, buf);
 }
 
@@ -106,16 +107,16 @@ void drawSystemTimersScreen(const SystemMetrics &metrics)
 
   u8g2.drawStr(0, 10, "- SYSTEM TIMERS -");
 
-  sprintf(buf, "Uptime: %luh %lum %lus", (upSec / 3600), (upSec % 3600) / 60, upSec % 60);
+  snprintf(buf, sizeof(buf), "Uptime: %luh %lum %lus", (upSec / 3600), (upSec % 3600) / 60, upSec % 60);
   u8g2.drawStr(0, 25, buf);
 
-  sprintf(buf, "BMS Data Age: %lus", bmsAge);
+  snprintf(buf, sizeof(buf), "BMS Data Age: %lus", bmsAge);
   u8g2.drawStr(0, 38, buf);
 
-  sprintf(buf, "Mem Free: %u KB", ESP.getFreeHeap() / 1024);
+  snprintf(buf, sizeof(buf), "Mem Free: %u KB", ESP.getFreeHeap() / 1024);
   u8g2.drawStr(0, 51, buf);
 
-  sprintf(buf, "Grace Tmr: %s", graceStatusToString(metrics.graceStatus));
+  snprintf(buf, sizeof(buf), "Grace Tmr: %s", graceStatusToString(metrics.graceStatus));
   u8g2.drawStr(0, 64, buf);
 }
 
@@ -124,13 +125,13 @@ void drawEnvironmentScreen(const SystemMetrics &metrics)
   char buf[32];
   u8g2.drawStr(0, 10, "- ENVIRONMENT DATA -");
 
-  sprintf(buf, "Temp : %.1f C", metrics.envTemp);
+  snprintf(buf, sizeof(buf), "Temp : %.1f C", metrics.envTemp);
   u8g2.drawStr(0, 25, buf);
 
-  sprintf(buf, "Humid: %.1f %%", metrics.envHum);
+  snprintf(buf, sizeof(buf), "Humid: %.1f %%", metrics.envHum);
   u8g2.drawStr(0, 38, buf);
 
-  sprintf(buf, "Press: %.1f hPa", metrics.envPres);
+  snprintf(buf, sizeof(buf), "Press: %.1f hPa", metrics.envPres);
   u8g2.drawStr(0, 51, buf);
 }
 

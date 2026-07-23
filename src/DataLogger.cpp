@@ -23,7 +23,8 @@ void logMetricsToFlash(const SystemMetrics &metrics)
     {
         file.close();
         Serial.println("[INFO] Log file full. Deleting old logs...");
-        LittleFS.remove(LOG_FILE); // Simple rotation: nuke and start fresh
+        LittleFS.remove("/metrics.bak.csv");           // Delete the oldest backup
+        LittleFS.rename(LOG_FILE, "/metrics.bak.csv"); // Keep the current 500kb as backup
     }
     else if (file)
     {

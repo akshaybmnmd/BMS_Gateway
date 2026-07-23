@@ -26,11 +26,12 @@ void readAcSensors()
 {
   while (Serial2.available())
   {
-    String payload = Serial2.readStringUntil('\n');
-    payload.trim();
+    char payload[384];
+    size_t len = Serial2.readBytesUntil('\n', payload, sizeof(payload) - 1);
+    payload[len] = '\0'; // Null-terminate the string
 
     // Basic validation to ensure we are looking at a JSON string
-    if (payload.length() > 0 && payload.charAt(0) == '{')
+    if (len > 0 && payload[0] == '{')
     {
       StaticJsonDocument<384> doc;
       DeserializationError error = deserializeJson(doc, payload);
@@ -38,16 +39,16 @@ void readAcSensors()
       if (!error)
       {
         // Map all incoming telemetry fields
-        acVoltage  = doc["acV1"] | 0.0f;
-        acCurrent  = doc["acI1"] | 0.0f;
+        acVoltage = doc["acV1"] | 0.0f;
+        acCurrent = doc["acI1"] | 0.0f;
         acVoltage2 = doc["acV2"] | 0.0f;
         acCurrent2 = doc["acI2"] | 0.0f;
-        dcVoltage  = doc["dcV"]  | 0.0f;
-        dcCurrent  = doc["dcI"]  | 0.0f;
-        dcPower    = doc["dcW"]  | 0.0f;
-        envTemp    = doc["tmp"]  | 0.0f;
-        envHum     = doc["hum"]  | 0.0f;
-        envPres    = doc["prs"]  | 0.0f;
+        dcVoltage = doc["dcV"] | 0.0f;
+        dcCurrent = doc["dcI"] | 0.0f;
+        dcPower = doc["dcW"] | 0.0f;
+        envTemp = doc["tmp"] | 0.0f;
+        envHum = doc["hum"] | 0.0f;
+        envPres = doc["prs"] | 0.0f;
 
         nanoConnected = true;
         lastSerialRx = millis();

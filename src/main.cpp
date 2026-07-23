@@ -32,7 +32,7 @@ const unsigned long LOG_INTERVAL_MS = 5 * 60 * 1000;
 
 const int BUTTON_PIN = 15;
 const int FAN_PIN = 13;
-const int FAN_PWM_CHANNEL = 0; 
+const int FAN_PWM_CHANNEL = 0;
 const int FAN_PWM_FREQ = 25000; // 25 kHz pushes coil whine above human hearing
 const int FAN_PWM_RES = 8;      // 8-bit resolution (0-255)
 
@@ -45,6 +45,9 @@ void setup()
 {
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  ledcSetup(FAN_PWM_CHANNEL, FAN_PWM_FREQ, FAN_PWM_RES);
+  ledcAttachPin(FAN_PIN, FAN_PWM_CHANNEL);
 
   metricsMutex = xSemaphoreCreateMutex();
   if (metricsMutex == NULL)
@@ -250,65 +253,72 @@ void evaluateContactorLogic()
       sysMetrics.dcCurrent = dcCurrent;
       sysMetrics.dcPower = dcPower;
       sysMetrics.envTemp = envTemp;
-      sysMetrics.envHum  = envHum;
+      sysMetrics.envHum = envHum;
       sysMetrics.envPres = envPres;
+
+      SystemMetrics metricsForIO = sysMetrics;
+
+      xSemaphoreGive(metricsMutex);
 
       // --- SILENT FAN CONTROL LOGIC ---
       int fanSpeed = 0;
-      
-      if (sysMetrics.envTemp >= 45.0) {
+
+      if (metricsForIO.envTemp >= 45.0)
+      {
         fanSpeed = 255; // 100% duty cycle (Maximum Cooling)
-      } 
-      else if (sysMetrics.envTemp >= 25.0) {
-        // Map 25C-45C to a 30%-100% duty cycle (roughly 80 to 255)
-        fanSpeed = map(sysMetrics.envTemp, 25.0, 45.0, 80, 255); 
-      } 
-      else {
+      }
+      else if (metricsForIO.envTemp >= 25.0)
+      {
+        // Map 25.0C - 45.0C linearly to 80 - 255
+        float tempRange = 45.0 - 25.0;
+        float pwmRange = 255.0 - 80.0;
+        fanSpeed = (int)(80.0 + ((metricsForIO.envTemp - 25.0) * (pwmRange / tempRange)));
+      }
+      else
+      {
         fanSpeed = 0; // Off
       }
-      
+
       ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
       // -----------------------------
 
-      if (sysMetrics.netCurrent > 1.0)
-        sysMetrics.status = STATUS_CHARGING;
-      else if (sysMetrics.netCurrent < -1.0)
-        sysMetrics.status = STATUS_DISCHARGING;
+      if (metricsForIO.netCurrent > 1.0)
+        metricsForIO.status = STATUS_CHARGING;
+      else if (metricsForIO.netCurrent < -1.0)
+        metricsForIO.status = STATUS_DISCHARGING;
       else
-        sysMetrics.status = STATUS_IDLE;
+        metricsForIO.status = STATUS_IDLE;
 
       if (millis() - lastLogTime >= LOG_INTERVAL_MS)
       {
-        logMetricsToFlash(sysMetrics);
+        logMetricsToFlash(metricsForIO);
         lastLogTime = millis();
       }
 
       Serial.println("\n================ SYSTEM METRICS ================");
-      Serial.printf("STATUS   : %s\n", statusToString(sysMetrics.status));
+      Serial.printf("STATUS   : %s\n", statusToString(metricsForIO.status));
       Serial.println("------------------------------------------------");
       Serial.printf("BMS 1    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms1Data.voltage, bms1Data.current, bms1Data.power, bms1Data.soc, bms1Data.maxTemp);
       Serial.printf("BMS 2    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms2Data.voltage, bms2Data.current, bms2Data.power, bms2Data.soc, bms2Data.maxTemp);
       Serial.println("------------------------------------------------");
-      Serial.printf("AC 1     : %.1fV | %.2fA | %.0fW\n", sysMetrics.acVoltage, sysMetrics.acCurrent, sysMetrics.acPower);
-      Serial.printf("AC 2     : %.1fV | %.2fA | %.0fW\n", sysMetrics.acVoltage2, sysMetrics.acCurrent2, sysMetrics.acPower2);
-      Serial.printf("PZEM DC  : %.1fV | %.2fA | %.1fW\n", sysMetrics.dcVoltage, sysMetrics.dcCurrent, sysMetrics.dcPower);
-      Serial.printf("ENV      : Temp: %.1fC | Hum: %.1f%% | Pres: %.1fhPa\n", sysMetrics.envTemp, sysMetrics.envHum, sysMetrics.envPres);
+      Serial.printf("AC 1     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
+      Serial.printf("AC 2     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage2, metricsForIO.acCurrent2, metricsForIO.acPower2);
+      Serial.printf("PZEM DC  : %.1fV | %.2fA | %.1fW\n", metricsForIO.dcVoltage, metricsForIO.dcCurrent, metricsForIO.dcPower);
+      Serial.printf("ENV      : Temp: %.1fC | Hum: %.1f%% | Pres: %.1fhPa\n", metricsForIO.envTemp, metricsForIO.envHum, metricsForIO.envPres);
       Serial.println("------------------------------------------------");
-      Serial.printf("DELTAS   : Volt:%.3fV | Cur:%.2fA | Pwr:%.0fW\n", sysMetrics.voltageDelta, sysMetrics.currentDelta, sysMetrics.powerDelta);
-      Serial.printf("DC TOTAL : Net: %6.2fA | %5.0fW\n", sysMetrics.netCurrent, sysMetrics.netPower);
-      Serial.printf("AC SENSE : %.1fV | %.2fA | %.0f VA\n", sysMetrics.acVoltage, sysMetrics.acCurrent, sysMetrics.acPower);
-      Serial.printf("HEALTH   : Avg SoC %d%% (Imb %d%%) | Peak Temp %.1fC\n", sysMetrics.avgSoc, sysMetrics.socDelta, sysMetrics.peakTemp);
+      Serial.printf("DELTAS   : Volt:%.3fV | Cur:%.2fA | Pwr:%.0fW\n", metricsForIO.voltageDelta, metricsForIO.currentDelta, metricsForIO.powerDelta);
+      Serial.printf("DC TOTAL : Net: %6.2fA | %5.0fW\n", metricsForIO.netCurrent, metricsForIO.netPower);
+      Serial.printf("AC SENSE : %.1fV | %.2fA | %.0f VA\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
+      Serial.printf("HEALTH   : Avg SoC %d%% (Imb %d%%) | Peak Temp %.1fC\n", metricsForIO.avgSoc, metricsForIO.socDelta, metricsForIO.peakTemp);
       Serial.println("================================================\n");
     }
     else
     {
+      xSemaphoreGive(metricsMutex);
       sysMetrics.status = STATUS_ERROR;
       Serial.println("\n[CRITICAL ERROR] BMS Data Timeout (5+ min). Defaulting to safe state.");
       // digitalWrite(CONTACTOR_PIN, LOW);
     }
-
-    // FIXED: Moved outside the if/else block. Mutex is guaranteed to release in all scenarios!
-    xSemaphoreGive(metricsMutex);
   }
   else
   {
@@ -321,6 +331,8 @@ void displayWorker(void *parameter)
 {
   const unsigned long VIEW_INTERVAL = 5000;
   const unsigned long DEBOUNCE_DELAY = 50;
+  unsigned long lastScreenUpdate = 0;
+  const unsigned long SCREEN_REFRESH_MS = 1000;
 
   unsigned long lastViewChange = millis();
   unsigned long lastDebounceTime = 0;
@@ -359,28 +371,34 @@ void displayWorker(void *parameter)
     }
     lastButtonState = reading;
 
-    // 3. Process View Layout Wrap-Around
+    // 3. Process View Layout Wrap-Around & Force Update flag
+    bool forceUpdate = advanceView;
     if (advanceView)
     {
       currentView = (currentView + 1) % 5; // Max 5 views (0 through 4)
       lastViewChange = currentMillis;
     }
 
-    // 4. Snapshot Strategy: Lock data, copy struct instantly, unlock immediately
-    SystemMetrics localMetricsSnapshot;
-    bool snapshotValid = false;
-
-    if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    // 4. Only draw to the screen once per second, OR if the button was just pressed
+    if (forceUpdate || (currentMillis - lastScreenUpdate >= SCREEN_REFRESH_MS))
     {
-      localMetricsSnapshot = sysMetrics;
-      xSemaphoreGive(metricsMutex);
-      snapshotValid = true;
-    }
+      // Snapshot Strategy: Lock data, copy struct instantly, unlock immediately
+      SystemMetrics localMetricsSnapshot;
+      bool snapshotValid = false;
 
-    // 5. Draw outside the critical section to prevent clogging Core 1
-    if (snapshotValid)
-    {
-      updateDisplay(localMetricsSnapshot, currentView);
+      if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+      {
+        localMetricsSnapshot = sysMetrics;
+        xSemaphoreGive(metricsMutex);
+        snapshotValid = true;
+      }
+
+      // 5. Draw outside the critical section to prevent clogging Core 1
+      if (snapshotValid)
+      {
+        updateDisplay(localMetricsSnapshot, currentView);
+        lastScreenUpdate = currentMillis; // Reset the 1-second refresh timer
+      }
     }
 
     // Block this task for 100ms. Gives CPU cycles completely back to Core 0's radio stacks.
