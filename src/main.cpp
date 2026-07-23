@@ -28,9 +28,9 @@ unsigned long stateTimer = 0;
 unsigned long lastAcRead = 0;
 
 unsigned long lastLogTime = 0;
-const unsigned long LOG_INTERVAL_MS = 5 * 60 * 1000;
 
 const int BUTTON_PIN = 15;
+const int CONTACTOR_PIN = 32;
 const int FAN_PIN = 13;
 const int FAN_PWM_CHANNEL = 0;
 const int FAN_PWM_FREQ = 25000; // 25 kHz pushes coil whine above human hearing
@@ -44,6 +44,9 @@ void displayWorker(void *parameter);
 void setup()
 {
   Serial.begin(115200);
+  pinMode(CONTACTOR_PIN, OUTPUT);
+  digitalWrite(CONTACTOR_PIN, LOW);
+
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   ledcSetup(FAN_PWM_CHANNEL, FAN_PWM_FREQ, FAN_PWM_RES);
@@ -243,18 +246,26 @@ void evaluateContactorLogic()
       sysMetrics.currentDelta = abs(bms1Data.current - bms2Data.current);
       sysMetrics.netPower = bms1Data.power + bms2Data.power;
       sysMetrics.powerDelta = abs(bms1Data.power - bms2Data.power);
-      sysMetrics.acVoltage = acVoltage;
-      sysMetrics.acCurrent = acCurrent;
-      sysMetrics.acPower = acVoltage * acCurrent;
-      sysMetrics.acVoltage2 = acVoltage2;
-      sysMetrics.acCurrent2 = acCurrent2;
-      sysMetrics.acPower2 = acVoltage2 * acCurrent2;
-      sysMetrics.dcVoltage = dcVoltage;
-      sysMetrics.dcCurrent = dcCurrent;
-      sysMetrics.dcPower = dcPower;
-      sysMetrics.envTemp = envTemp;
-      sysMetrics.envHum = envHum;
-      sysMetrics.envPres = envPres;
+      sysMetrics.acVoltage = acTelemetry.acVoltage1;
+      sysMetrics.acCurrent = acTelemetry.acCurrent1;
+      sysMetrics.acPower = acTelemetry.acVoltage1 * acTelemetry.acCurrent1;
+      sysMetrics.acVoltage2 = acTelemetry.acVoltage2;
+      sysMetrics.acCurrent2 = acTelemetry.acCurrent2;
+      sysMetrics.acPower2 = acTelemetry.acVoltage2 * acTelemetry.acCurrent2;
+      sysMetrics.dcVoltage = acTelemetry.dcVoltage;
+      sysMetrics.dcCurrent = acTelemetry.dcCurrent;
+      sysMetrics.dcPower = acTelemetry.dcPower;
+      sysMetrics.envTemp = acTelemetry.temperature;
+      sysMetrics.envHum = acTelemetry.humidity;
+      sysMetrics.envPres = acTelemetry.pressure;
+      sysMetrics.nano_connected = acTelemetry.nano_connected;
+
+      if (sysMetrics.netCurrent > 1.0)
+        sysMetrics.status = STATUS_CHARGING;
+      else if (sysMetrics.netCurrent < -1.0)
+        sysMetrics.status = STATUS_DISCHARGING;
+      else
+        sysMetrics.status = STATUS_IDLE;
 
       SystemMetrics metricsForIO = sysMetrics;
 
@@ -265,14 +276,14 @@ void evaluateContactorLogic()
 
       if (metricsForIO.envTemp >= 45.0)
       {
-        fanSpeed = 255; // 100% duty cycle (Maximum Cooling)
+        fanSpeed = FAN_MAX_DUTY;
       }
       else if (metricsForIO.envTemp >= 25.0)
       {
         // Map 25.0C - 45.0C linearly to 80 - 255
-        float tempRange = 45.0 - 25.0;
-        float pwmRange = 255.0 - 80.0;
-        fanSpeed = (int)(80.0 + ((metricsForIO.envTemp - 25.0) * (pwmRange / tempRange)));
+        float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
+        float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
+        fanSpeed = (int)((float)FAN_MIN_DUTY + ((metricsForIO.envTemp - FAN_START_TEMP) * (pwmRange / tempRange)));
       }
       else
       {
@@ -281,13 +292,6 @@ void evaluateContactorLogic()
 
       ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
       // -----------------------------
-
-      if (metricsForIO.netCurrent > 1.0)
-        metricsForIO.status = STATUS_CHARGING;
-      else if (metricsForIO.netCurrent < -1.0)
-        metricsForIO.status = STATUS_DISCHARGING;
-      else
-        metricsForIO.status = STATUS_IDLE;
 
       if (millis() - lastLogTime >= LOG_INTERVAL_MS)
       {
@@ -314,10 +318,10 @@ void evaluateContactorLogic()
     }
     else
     {
-      xSemaphoreGive(metricsMutex);
+      digitalWrite(CONTACTOR_PIN, LOW);
       sysMetrics.status = STATUS_ERROR;
+      xSemaphoreGive(metricsMutex);
       Serial.println("\n[CRITICAL ERROR] BMS Data Timeout (5+ min). Defaulting to safe state.");
-      // digitalWrite(CONTACTOR_PIN, LOW);
     }
   }
   else

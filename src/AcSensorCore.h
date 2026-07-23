@@ -3,19 +3,23 @@
 
 #include <Arduino.h>
 
+struct AcTelemetry {
+    float acVoltage1;
+    float acCurrent1;
+    float acVoltage2;
+    float acCurrent2;
+    float dcVoltage;
+    float dcCurrent;
+    float dcPower;
+    float temperature;
+    float humidity;
+    float pressure;
+    bool nano_connected;
+};
+
+extern AcTelemetry acTelemetry;
+
 void setupAcSensors();
 void readAcSensors(); 
-
-extern float acVoltage;
-extern float acCurrent;
-extern float acVoltage2;
-extern float acCurrent2;
-extern float dcVoltage;
-extern float dcCurrent;
-extern float dcPower;
-extern bool nanoConnected;
-extern float envTemp;
-extern float envHum;
-extern float envPres;
 
 #endif

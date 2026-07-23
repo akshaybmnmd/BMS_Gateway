@@ -91,7 +91,7 @@ void drawHardwareFlagsScreen(const SystemMetrics &metrics)
   u8g2.drawStr(0, 38, buf);
 
   // CHANGED: Reflects Nano Serial connection instead of I2C ADC
-  snprintf(buf, sizeof(buf), "Nano RX : %s", nanoConnected ? "OK" : "ERR");
+  snprintf(buf, sizeof(buf), "Nano RX : %s", metrics.nano_connected ? "OK" : "ERR");
   u8g2.drawStr(0, 51, buf);
 
   snprintf(buf, sizeof(buf), "Relay   : %s", metrics.status == STATUS_ERROR ? "OPEN" : "CLOSED");

@@ -1,23 +1,15 @@
 #include "AcSensorCore.h"
 #include <ArduinoJson.h>
+#include "Config.h"
 
-float acVoltage = 0.0;
-float acCurrent = 0.0;
-float acVoltage2 = 0.0;
-float acCurrent2 = 0.0;
-float dcVoltage = 0.0;
-float dcCurrent = 0.0;
-float dcPower = 0.0;
-float envTemp = 0.0;
-float envHum = 0.0;
-float envPres = 0.0;
-bool nanoConnected = false;
-
+// Zero-initialize the entire struct
+AcTelemetry acTelemetry = {};
 unsigned long lastSerialRx = 0;
+
+void clearAcTelemetry();
 
 void setupAcSensors()
 {
-  // ESP32 Hardware Serial 2 maps to RX:16 and TX:17 by default
   Serial2.begin(9600, SERIAL_8N1, 16, 17);
   Serial.println("[INFO] UART2 Initialized on RX:16, TX:17 for Nano Telemetry.");
 }
@@ -26,31 +18,29 @@ void readAcSensors()
 {
   while (Serial2.available())
   {
-    char payload[384];
+    char payload[AC_PAYLOAD_BUFFER_SIZE];
     size_t len = Serial2.readBytesUntil('\n', payload, sizeof(payload) - 1);
-    payload[len] = '\0'; // Null-terminate the string
+    payload[len] = '\0';
 
-    // Basic validation to ensure we are looking at a JSON string
     if (len > 0 && payload[0] == '{')
     {
-      StaticJsonDocument<384> doc;
+      StaticJsonDocument<AC_PAYLOAD_BUFFER_SIZE> doc;
       DeserializationError error = deserializeJson(doc, payload);
 
       if (!error)
       {
-        // Map all incoming telemetry fields
-        acVoltage = doc["acV1"] | 0.0f;
-        acCurrent = doc["acI1"] | 0.0f;
-        acVoltage2 = doc["acV2"] | 0.0f;
-        acCurrent2 = doc["acI2"] | 0.0f;
-        dcVoltage = doc["dcV"] | 0.0f;
-        dcCurrent = doc["dcI"] | 0.0f;
-        dcPower = doc["dcW"] | 0.0f;
-        envTemp = doc["tmp"] | 0.0f;
-        envHum = doc["hum"] | 0.0f;
-        envPres = doc["prs"] | 0.0f;
+        acTelemetry.acVoltage1 = doc["acV1"] | 0.0f;
+        acTelemetry.acCurrent1 = doc["acI1"] | 0.0f;
+        acTelemetry.acVoltage2 = doc["acV2"] | 0.0f;
+        acTelemetry.acCurrent2 = doc["acI2"] | 0.0f;
+        acTelemetry.dcVoltage = doc["dcV"] | 0.0f;
+        acTelemetry.dcCurrent = doc["dcI"] | 0.0f;
+        acTelemetry.dcPower = doc["dcW"] | 0.0f;
+        acTelemetry.temperature = doc["tmp"] | 0.0f;
+        acTelemetry.humidity = doc["hum"] | 0.0f;
+        acTelemetry.pressure = doc["prs"] | 0.0f;
 
-        nanoConnected = true;
+        acTelemetry.nano_connected = true;
         lastSerialRx = millis();
       }
       else
@@ -61,20 +51,18 @@ void readAcSensors()
     }
   }
 
-  // Connection timeout safety net (5 seconds)
-  if (nanoConnected && (millis() - lastSerialRx > 5000))
+  // Safety net timeout
+  if (acTelemetry.nano_connected && (millis() - lastSerialRx > SERIAL_TIMEOUT_MS))
   {
     Serial.println("[WARNING] Nano Serial Telemetry Timeout!");
-    nanoConnected = false;
-    acVoltage = 0.0;
-    acCurrent = 0.0;
-    acVoltage2 = 0.0;
-    acCurrent2 = 0.0;
-    dcVoltage = 0.0;
-    dcCurrent = 0.0;
-    dcPower = 0.0;
-    envTemp = 0.0;
-    envHum = 0.0;
-    envPres = 0.0;
+
+    // Wipe the struct clean instantly
+    clearAcTelemetry();
   }
+}
+
+void clearAcTelemetry()
+{
+  // This safely zeroes out all floats and sets the boolean to false
+  acTelemetry = {};
 }

@@ -9,6 +9,9 @@ NimBLEClient *pClient = nullptr;
 NimBLERemoteCharacteristic *pActiveWriteChar = nullptr;
 const uint8_t basicInfoCmd[] = {0xDD, 0xA5, 0x03, 0x00, 0xFF, 0xFD, 0x77};
 
+void clearBmsBuffer(BmsData* bms);
+void resetBmsState(BmsData* bms);
+
 static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t length, bool isNotify)
 {
   if (activeBms == nullptr)
@@ -16,7 +19,7 @@ static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t l
 
   for (size_t i = 0; i < length; i++)
   {
-    if (activeBms->bufferIdx < 64)
+    if (activeBms->bufferIdx < BMS_BUFFER_SIZE)
       activeBms->buffer[activeBms->bufferIdx++] = pData[i];
   }
 
@@ -53,8 +56,8 @@ static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t l
     {
       Serial.printf("[DEBUG %lu] Payload failed header/length validation.\n", millis());
     }
-    activeBms->bufferIdx = 0;
-    memset(activeBms->buffer, 0, 64);
+
+    clearBmsBuffer(activeBms);
   }
 }
 
@@ -75,9 +78,7 @@ void disconnectBLE()
 
 bool connectAndSubscribe(const std::string &macAddress)
 {
-  activeBms->dataReady = false;
-  activeBms->bufferIdx = 0;
-  memset(activeBms->buffer, 0, 64);
+  resetBmsState(activeBms);
   pActiveWriteChar = nullptr;
 
   NimBLEAddress address(macAddress, BLE_ADDR_PUBLIC);
@@ -126,4 +127,20 @@ bool triggerBmsRead()
   }
   Serial.printf("[ERROR %lu] Cannot write to characteristic %s!\n", millis(), BMS_CHAR_WRITE_UUID);
   return false;
+}
+
+// Clears just the payload buffer (safe to use after parsing)
+void clearBmsBuffer(BmsData* bms)
+{
+    if (bms == nullptr) return;
+    bms->bufferIdx = 0;
+    memset(bms->buffer, 0, sizeof(bms->buffer));
+}
+
+// Full reset for disconnections and initialization
+void resetBmsState(BmsData* bms)
+{
+    if (bms == nullptr) return;
+    bms->dataReady = false;
+    clearBmsBuffer(bms);
 }

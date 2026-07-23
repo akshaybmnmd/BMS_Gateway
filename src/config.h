@@ -6,6 +6,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+// --- Network & Hardware MACs ---
 const std::string BMS1_MAC = "a5:c2:39:1d:e6:2e";
 const std::string BMS2_MAC = "a5:c2:39:1d:e5:9b";
 
@@ -13,9 +14,24 @@ const char* const BMS_SERVICE_UUID = "FF00";
 const char* const BMS_CHAR_NOTIFY_UUID = "FF01";
 const char* const BMS_CHAR_WRITE_UUID = "FF02";
 
-const unsigned long READ_INTERVAL_MS = 10000;
-const unsigned long TIMEOUT_MS = 2000;
-const unsigned long COOLDOWN_MS = 200;
+// --- Timing & Intervals ---
+constexpr unsigned long READ_INTERVAL_MS = 10000;
+constexpr unsigned long TIMEOUT_MS = 2000;
+constexpr unsigned long COOLDOWN_MS = 200;
+constexpr unsigned long SERIAL_TIMEOUT_MS = 5000;
+constexpr unsigned long BMS_DELAY_MS = 500;
+constexpr unsigned long STALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 mins
+constexpr unsigned long LOG_INTERVAL_MS = 5 * 60 * 1000;  // 5 mins
+
+// --- Buffers & Sizes ---
+constexpr size_t BMS_BUFFER_SIZE = 64;
+constexpr size_t AC_PAYLOAD_BUFFER_SIZE = 384;
+
+// --- Fan & Thermal Tuning ---
+constexpr float FAN_START_TEMP = 25.0f;
+constexpr float FAN_FULL_TEMP = 45.0f;
+constexpr int FAN_MIN_DUTY = 80;
+constexpr int FAN_MAX_DUTY = 255;
 
 struct BmsData {
   uint8_t id;
@@ -70,6 +86,7 @@ struct SystemMetrics {
   float envTemp;
   float envHum;
   float envPres;
+  bool nano_connected;
 };
 
 static const char* statusToString(SystemStatus status) {
