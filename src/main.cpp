@@ -35,11 +35,56 @@ const int FAN_PIN = 13;
 const int FAN_PWM_CHANNEL = 0;
 const int FAN_PWM_FREQ = 25000; // 25 kHz pushes coil whine above human hearing
 const int FAN_PWM_RES = 8;      // 8-bit resolution (0-255)
+const int TURN_ON_SOC = 60;
+const int TURN_OFF_SOC = 40;
+const unsigned long BOOT_DELAY_MS = 15000;
+
+bool manualOverride = false;
+bool overrideState = false;
+
+bool currentRelayState = false;
+unsigned long lastRelaySwitchTime = 0;
+const unsigned long RELAY_COOLDOWN_MS = 5000;
 
 int currentView = 0;
 
 void evaluateContactorLogic();
 void displayWorker(void *parameter);
+void updateRelayState(bool desiredState);
+
+void processSerialCommands()
+{
+  if (Serial.available())
+  {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();        // Remove any \r or spaces
+    cmd.toLowerCase(); // Make it case-insensitive
+
+    if (cmd == "on")
+    {
+      manualOverride = true;
+      overrideState = true;
+      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced ON");
+      updateRelayState(true);
+    }
+    else if (cmd == "off")
+    {
+      manualOverride = true;
+      overrideState = false;
+      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced OFF");
+      updateRelayState(false);
+    }
+    else if (cmd == "auto")
+    {
+      manualOverride = false;
+      Serial.println("\n[OVERRIDE] Manual Mode DISABLED: Returning to Auto Battery Logic");
+    }
+    else
+    {
+      Serial.println("\n[ERROR] Unknown command. Valid commands: 'on', 'off', 'auto'.");
+    }
+  }
+}
 
 void setup()
 {
@@ -79,6 +124,8 @@ void setup()
 
 void loop()
 {
+  processSerialCommands();
+
   // Core 1 runs the BLE State Machine completely decoupled from display refreshes
   switch (currentState)
   {
@@ -201,6 +248,32 @@ void loop()
   }
 }
 
+void updateRelayState(bool autoDesiredState) {
+  // 1. Determine final desired state: Override takes precedence over Auto
+  bool finalDesiredState = manualOverride ? overrideState : autoDesiredState;
+
+  // 2. No action needed if we are already in the correct state
+  if (finalDesiredState == currentRelayState) return; 
+
+  // 3. Boot Lockout Check (prevents closing during startup)
+  if (finalDesiredState == true && millis() < BOOT_DELAY_MS) {
+    return; 
+  }
+
+  // 4. Non-blocking 5-second cooldown check
+  if (millis() - lastRelaySwitchTime >= RELAY_COOLDOWN_MS) {
+    digitalWrite(CONTACTOR_PIN, finalDesiredState ? HIGH : LOW);
+    currentRelayState = finalDesiredState;
+    lastRelaySwitchTime = millis();
+    
+    if (manualOverride) {
+        Serial.printf("\n[OVERRIDE] Contactor physically forced to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
+    } else {
+        Serial.printf("\n[INFO] Auto-Logic Contactor switched to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
+    }
+  }
+}
+
 void evaluateContactorLogic()
 {
   if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
@@ -267,6 +340,27 @@ void evaluateContactorLogic()
       else
         sysMetrics.status = STATUS_IDLE;
 
+      // ---> NEW CONTACTOR LOGIC WITH HYSTERESIS <---
+
+      bool desiredRelayState = currentRelayState; // Default to maintaining current state
+
+      if (sysMetrics.avgSoc > TURN_ON_SOC)
+      {
+        desiredRelayState = true;
+      }
+      else if (sysMetrics.avgSoc < TURN_OFF_SOC)
+      {
+        desiredRelayState = false;
+        sysMetrics.status = STATUS_ERROR; // Keep this if you want the UI SYS overview to show ERR
+        Serial.println("[WARNING] Battery low! Requesting contactor open.");
+      }
+
+      updateRelayState(desiredRelayState);        // Request the state change (handled safely)
+      sysMetrics.relayClosed = currentRelayState; // Lock the actual physical state into the metrics struct
+      // Note: If avgSoc is between 40 and 60, no action is taken.
+      // The contactor naturally maintains its current physical state.
+      // -----------------------------
+
       SystemMetrics metricsForIO = sysMetrics;
 
       xSemaphoreGive(metricsMutex);
@@ -318,8 +412,9 @@ void evaluateContactorLogic()
     }
     else
     {
-      digitalWrite(CONTACTOR_PIN, LOW);
+      updateRelayState(false); // Safely request open
       sysMetrics.status = STATUS_ERROR;
+      sysMetrics.relayClosed = currentRelayState;
       xSemaphoreGive(metricsMutex);
       Serial.println("\n[CRITICAL ERROR] BMS Data Timeout (5+ min). Defaulting to safe state.");
     }

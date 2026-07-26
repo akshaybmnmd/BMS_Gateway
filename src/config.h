@@ -87,6 +87,7 @@ struct SystemMetrics {
   float envHum;
   float envPres;
   bool nano_connected;
+  bool relayClosed;
 };
 
 static const char* statusToString(SystemStatus status) {

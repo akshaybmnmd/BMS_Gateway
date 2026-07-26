@@ -94,7 +94,7 @@ void drawHardwareFlagsScreen(const SystemMetrics &metrics)
   snprintf(buf, sizeof(buf), "Nano RX : %s", metrics.nano_connected ? "OK" : "ERR");
   u8g2.drawStr(0, 51, buf);
 
-  snprintf(buf, sizeof(buf), "Relay   : %s", metrics.status == STATUS_ERROR ? "OPEN" : "CLOSED");
+  snprintf(buf, sizeof(buf), "Relay   : %s", metrics.relayClosed ? "CLOSED" : "OPEN");
   u8g2.drawStr(0, 64, buf);
 }
 
