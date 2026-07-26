@@ -3,10 +3,10 @@
 #include "Config.h"
 
 // Zero-initialize the entire struct
-AcTelemetry acTelemetry = {};
+SensorTelemetry sensorData = {};
 unsigned long lastSerialRx = 0;
 
-void clearAcTelemetry();
+void clearNanoTelemetry();
 
 void setupNanoTelemetry()
 {
@@ -29,18 +29,18 @@ void processNanoTelemetry()
 
       if (!error)
       {
-        acTelemetry.acVoltage1 = doc["acV1"] | 0.0f;
-        acTelemetry.acCurrent1 = doc["acI1"] | 0.0f;
-        acTelemetry.acVoltage2 = doc["acV2"] | 0.0f;
-        acTelemetry.acCurrent2 = doc["acI2"] | 0.0f;
-        acTelemetry.dcVoltage = doc["dcV"] | 0.0f;
-        acTelemetry.dcCurrent = doc["dcI"] | 0.0f;
-        acTelemetry.dcPower = doc["dcW"] | 0.0f;
-        acTelemetry.temperature = doc["tmp"] | 0.0f;
-        acTelemetry.humidity = doc["hum"] | 0.0f;
-        acTelemetry.pressure = doc["prs"] | 0.0f;
+        sensorData.acVoltage1 = doc["acV1"] | 0.0f;
+        sensorData.acCurrent1 = doc["acI1"] | 0.0f;
+        sensorData.acVoltage2 = doc["acV2"] | 0.0f;
+        sensorData.acCurrent2 = doc["acI2"] | 0.0f;
+        sensorData.dcVoltage = doc["dcV"] | 0.0f;
+        sensorData.dcCurrent = doc["dcI"] | 0.0f;
+        sensorData.dcPower = doc["dcW"] | 0.0f;
+        sensorData.temperature = doc["tmp"] | 0.0f;
+        sensorData.humidity = doc["hum"] | 0.0f;
+        sensorData.pressure = doc["prs"] | 0.0f;
 
-        acTelemetry.nano_connected = true;
+        sensorData.nano_connected = true;
         lastSerialRx = millis();
       }
       else
@@ -52,17 +52,17 @@ void processNanoTelemetry()
   }
 
   // Safety net timeout
-  if (acTelemetry.nano_connected && (millis() - lastSerialRx > SERIAL_TIMEOUT_MS))
+  if (sensorData.nano_connected && (millis() - lastSerialRx > SERIAL_TIMEOUT_MS))
   {
     Serial.println("[WARNING] Nano Serial Telemetry Timeout!");
 
     // Wipe the struct clean instantly
-    clearAcTelemetry();
+    clearNanoTelemetry();
   }
 }
 
-void clearAcTelemetry()
+void clearNanoTelemetry()
 {
   // This safely zeroes out all floats and sets the boolean to false
-  acTelemetry = {};
+  sensorData = {};
 }

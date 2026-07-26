@@ -1,9 +1,9 @@
-#ifndef AC_SENSOR_CORE_H
-#define AC_SENSOR_CORE_H
+#ifndef NANO_TELEMETRY_H
+#define NANO_TELEMETRY_H
 
 #include <Arduino.h>
 
-struct AcTelemetry {
+struct SensorTelemetry {
     float acVoltage1;
     float acCurrent1;
     float acVoltage2;
@@ -17,7 +17,7 @@ struct AcTelemetry {
     bool nano_connected;
 };
 
-extern AcTelemetry acTelemetry;
+extern SensorTelemetry sensorData;
 
 void setupNanoTelemetry();
 void processNanoTelemetry(); 

@@ -18,7 +18,7 @@ enum AppState
   STATE_CONNECT_BMS2,
   STATE_DELAY_BMS2,
   STATE_WAIT_BMS2_DATA,
-  STATE_PROCESS_LOGIC
+  STATE_UPDATE_SYSTEM_CONTROL
 };
 
 SystemMetrics sysMetrics;
@@ -26,7 +26,6 @@ SemaphoreHandle_t metricsMutex = NULL;
 
 AppState currentState = STATE_CONNECT_BMS1;
 unsigned long stateTimer = 0;
-unsigned long lastAcRead = 0;
 
 unsigned long lastLogTime = 0;
 
@@ -250,7 +249,7 @@ void loop()
     else
     {
       Serial.printf("[DEBUG %lu] BMS 2 connect failed. Jumping to Process Logic.\n", millis());
-      currentState = STATE_PROCESS_LOGIC;
+      currentState = STATE_UPDATE_SYSTEM_CONTROL;
     }
     break;
 
@@ -265,7 +264,7 @@ void loop()
       else
       {
         disconnectBLE();
-        currentState = STATE_PROCESS_LOGIC;
+        currentState = STATE_UPDATE_SYSTEM_CONTROL;
       }
     }
     break;
@@ -274,18 +273,18 @@ void loop()
     if (activeBms->dataReady)
     {
       disconnectBLE();
-      currentState = STATE_PROCESS_LOGIC;
+      currentState = STATE_UPDATE_SYSTEM_CONTROL;
     }
     else if (millis() - stateTimer >= TIMEOUT_MS)
     {
       Serial.printf("[DEBUG %lu] BMS 2 Request Timed Out!\n", millis());
       activeBms->isConnected = false;
       disconnectBLE();
-      currentState = STATE_PROCESS_LOGIC;
+      currentState = STATE_UPDATE_SYSTEM_CONTROL;
     }
     break;
 
-  case STATE_PROCESS_LOGIC:
+  case STATE_UPDATE_SYSTEM_CONTROL:
     updateSystemControl();
     activeBms = nullptr;
     stateTimer = millis();
@@ -364,19 +363,6 @@ void updateSystemControl()
       sysMetrics.currentDelta = abs(bms1Data.current - bms2Data.current);
       sysMetrics.netPower = bms1Data.power + bms2Data.power;
       sysMetrics.powerDelta = abs(bms1Data.power - bms2Data.power);
-      sysMetrics.acVoltage = acTelemetry.acVoltage1;
-      sysMetrics.acCurrent = acTelemetry.acCurrent1;
-      sysMetrics.acPower = acTelemetry.acVoltage1 * acTelemetry.acCurrent1;
-      sysMetrics.acVoltage2 = acTelemetry.acVoltage2;
-      sysMetrics.acCurrent2 = acTelemetry.acCurrent2;
-      sysMetrics.acPower2 = acTelemetry.acVoltage2 * acTelemetry.acCurrent2;
-      sysMetrics.dcVoltage = acTelemetry.dcVoltage;
-      sysMetrics.dcCurrent = acTelemetry.dcCurrent;
-      sysMetrics.dcPower = acTelemetry.dcPower;
-      sysMetrics.envTemp = acTelemetry.temperature;
-      sysMetrics.envHum = acTelemetry.humidity;
-      sysMetrics.envPres = acTelemetry.pressure;
-      sysMetrics.nano_connected = acTelemetry.nano_connected;
 
       if (sysMetrics.netCurrent > 1.0)
         sysMetrics.status = STATUS_CHARGING;
@@ -409,28 +395,6 @@ void updateSystemControl()
       SystemMetrics metricsForIO = sysMetrics;
 
       xSemaphoreGive(metricsMutex);
-
-      // --- SILENT FAN CONTROL LOGIC ---
-      int fanSpeed = 0;
-
-      if (metricsForIO.envTemp >= FAN_FULL_TEMP)
-      {
-        fanSpeed = FAN_MAX_DUTY;
-      }
-      else if (metricsForIO.envTemp >= FAN_START_TEMP)
-      {
-        // Map 25.0C - 45.0C linearly to 80 - 255
-        float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
-        float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
-        fanSpeed = (int)((float)FAN_MIN_DUTY + ((metricsForIO.envTemp - FAN_START_TEMP) * (pwmRange / tempRange)));
-      }
-      else
-      {
-        fanSpeed = 0; // Off
-      }
-
-      ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
-      // -----------------------------
 
       sendTelemetryToWiFi(metricsForIO);
 
@@ -489,6 +453,46 @@ void backgroundTask(void *parameter)
   {
     processSerialCommands(); 
     processNanoTelemetry();
+
+    if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    {
+      sysMetrics.acVoltage = sensorData.acVoltage1;
+      sysMetrics.acCurrent = sensorData.acCurrent1;
+      sysMetrics.acPower = sensorData.acVoltage1 * sensorData.acCurrent1;
+      sysMetrics.acVoltage2 = sensorData.acVoltage2;
+      sysMetrics.acCurrent2 = sensorData.acCurrent2;
+      sysMetrics.acPower2 = sensorData.acVoltage2 * sensorData.acCurrent2;
+      sysMetrics.dcVoltage = sensorData.dcVoltage;
+      sysMetrics.dcCurrent = sensorData.dcCurrent;
+      sysMetrics.dcPower = sensorData.dcPower;
+      sysMetrics.envTemp = sensorData.temperature;
+      sysMetrics.envHum = sensorData.humidity;
+      sysMetrics.envPres = sensorData.pressure;
+      sysMetrics.nano_connected = sensorData.nano_connected;
+      xSemaphoreGive(metricsMutex);
+    }
+
+    // --- SILENT FAN CONTROL LOGIC ---
+      int fanSpeed = 0;
+
+      if (sensorData.temperature >= FAN_FULL_TEMP)
+      {
+        fanSpeed = FAN_MAX_DUTY;
+      }
+      else if (sensorData.temperature >= FAN_START_TEMP)
+      {
+        // Map 25.0C - 45.0C linearly to 80 - 255
+        float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
+        float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
+        fanSpeed = (int)((float)FAN_MIN_DUTY + ((sensorData.temperature - FAN_START_TEMP) * (pwmRange / tempRange)));
+      }
+      else
+      {
+        fanSpeed = 0; // Off
+      }
+
+      ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
+      // -----------------------------
 
     bool advanceView = false;
     unsigned long currentMillis = millis();
