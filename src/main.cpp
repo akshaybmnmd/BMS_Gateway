@@ -4,6 +4,7 @@
 #include "DataLogger.h"
 #include "AcSensorCore.h"
 #include "DisplayDriver.h"
+#include <ArduinoJson.h>
 
 TaskHandle_t DisplayTaskHandle = NULL;
 
@@ -38,6 +39,10 @@ const int FAN_PWM_RES = 8;      // 8-bit resolution (0-255)
 const int TURN_ON_SOC = 60;
 const int TURN_OFF_SOC = 40;
 const unsigned long BOOT_DELAY_MS = 15000;
+
+const int WIFI_RX_PIN = 4;
+const int WIFI_TX_PIN = 5;
+const int WIFI_BAUD = 115200;
 
 bool manualOverride = false;
 bool overrideState = false;
@@ -86,9 +91,53 @@ void processSerialCommands()
   }
 }
 
+void sendTelemetryToWiFi(const SystemMetrics &metrics)
+{
+  // 512 bytes is plenty for this payload
+  StaticJsonDocument<512> doc;
+
+  // AC Data
+  doc["acV1"] = metrics.acVoltage;
+  doc["acI1"] = metrics.acCurrent;
+  doc["acW1"] = metrics.acPower;
+  doc["acV2"] = metrics.acVoltage2;
+  doc["acI2"] = metrics.acCurrent2;
+  doc["acW2"] = metrics.acPower2;
+  
+  // DC & PZEM Data
+  doc["dcV"]  = metrics.dcVoltage;
+  doc["dcI"]  = metrics.dcCurrent;
+  doc["dcW"]  = metrics.dcPower;
+  
+  // Battery Data
+  doc["bms1V"]   = bms1Data.voltage;
+  doc["bms1I"]   = bms1Data.current;
+  doc["bms1Soc"] = bms1Data.soc;
+  doc["bms1Tmp"] = bms1Data.maxTemp;
+  doc["bms2V"]   = bms2Data.voltage;
+  doc["bms2I"]   = bms2Data.current;
+  doc["bms2Soc"] = bms2Data.soc;
+  doc["bms2Tmp"] = bms2Data.maxTemp;
+  
+  // System Health & Environment
+  doc["netI"]   = metrics.netCurrent;
+  doc["netW"]   = metrics.netPower;
+  doc["avgSoc"] = metrics.avgSoc;
+  doc["relay"]  = metrics.relayClosed;
+  doc["envTmp"] = metrics.envTemp;
+  doc["envHum"] = metrics.envHum;
+  doc["envPrs"] = metrics.envPres;
+  doc["sysSts"] = (int)metrics.status; 
+
+  // Send the payload to the Wi-Fi node, terminating with a newline character
+  serializeJson(doc, Serial1);
+  Serial1.println(); 
+}
+
 void setup()
 {
   Serial.begin(115200);
+  Serial1.begin(WIFI_BAUD, SERIAL_8N1, WIFI_RX_PIN, WIFI_TX_PIN);
   pinMode(CONTACTOR_PIN, OUTPUT);
   digitalWrite(CONTACTOR_PIN, LOW);
 
@@ -386,6 +435,8 @@ void evaluateContactorLogic()
 
       ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
       // -----------------------------
+
+      sendTelemetryToWiFi(metricsForIO);
 
       if (millis() - lastLogTime >= LOG_INTERVAL_MS)
       {
