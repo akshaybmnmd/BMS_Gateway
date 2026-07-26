@@ -53,8 +53,8 @@ const unsigned long RELAY_COOLDOWN_MS = 5000;
 
 int currentView = 0;
 
-void evaluateContactorLogic();
-void displayWorker(void *parameter);
+void evaluateSystemLogicAndControl();
+void uiAndBackgroundWorker(void *parameter);
 void updateRelayState(bool desiredState);
 
 void processSerialCommands()
@@ -156,12 +156,12 @@ void setup()
 
   setupDisplay();
   drawSplashScreen();
-  setupAcSensors();
+  setupNanoSerial();
   setupBLE();
 
   xTaskCreatePinnedToCore(
-      displayWorker,
-      "DisplayTask",
+      uiAndBackgroundWorker,
+      "UiBackgroundCore0",
       4096,
       NULL,
       1,
@@ -173,8 +173,6 @@ void setup()
 
 void loop()
 {
-  processSerialCommands();
-
   // Core 1 runs the BLE State Machine completely decoupled from display refreshes
   switch (currentState)
   {
@@ -288,8 +286,7 @@ void loop()
     break;
 
   case STATE_PROCESS_LOGIC:
-    readAcSensors();
-    evaluateContactorLogic();
+    evaluateSystemLogicAndControl();
     activeBms = nullptr;
     stateTimer = millis();
     currentState = STATE_WAIT_INTERVAL;
@@ -323,7 +320,7 @@ void updateRelayState(bool autoDesiredState) {
   }
 }
 
-void evaluateContactorLogic()
+void evaluateSystemLogicAndControl()
 {
   if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
   {
@@ -477,7 +474,7 @@ void evaluateContactorLogic()
 }
 
 // Thread safe, low priority background UI monitor locked to Core 0
-void displayWorker(void *parameter)
+void uiAndBackgroundWorker(void *parameter)
 {
   const unsigned long VIEW_INTERVAL = 5000;
   const unsigned long DEBOUNCE_DELAY = 50;
@@ -491,6 +488,9 @@ void displayWorker(void *parameter)
 
   for (;;)
   {
+    processSerialCommands(); 
+    fetchNanoTelemetry();
+
     bool advanceView = false;
     unsigned long currentMillis = millis();
 
