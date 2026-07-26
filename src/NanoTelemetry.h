@@ -19,7 +19,7 @@ struct AcTelemetry {
 
 extern AcTelemetry acTelemetry;
 
-void setupNanoSerial();
-void fetchNanoTelemetry(); 
+void setupNanoTelemetry();
+void processNanoTelemetry(); 
 
 #endif

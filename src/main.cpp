@@ -2,7 +2,7 @@
 #include "Config.h"
 #include "BleCore.h"
 #include "DataLogger.h"
-#include "AcSensorCore.h"
+#include "NanoTelemetry.h"
 #include "DisplayDriver.h"
 #include <ArduinoJson.h>
 
@@ -53,8 +53,8 @@ const unsigned long RELAY_COOLDOWN_MS = 5000;
 
 int currentView = 0;
 
-void evaluateSystemLogicAndControl();
-void uiAndBackgroundWorker(void *parameter);
+void updateSystemControl();
+void backgroundTask(void *parameter);
 void updateRelayState(bool desiredState);
 
 void processSerialCommands()
@@ -156,12 +156,12 @@ void setup()
 
   setupDisplay();
   drawSplashScreen();
-  setupNanoSerial();
+  setupNanoTelemetry();
   setupBLE();
 
   xTaskCreatePinnedToCore(
-      uiAndBackgroundWorker,
-      "UiBackgroundCore0",
+      backgroundTask,
+      "BackgroundCore0",
       4096,
       NULL,
       1,
@@ -286,7 +286,7 @@ void loop()
     break;
 
   case STATE_PROCESS_LOGIC:
-    evaluateSystemLogicAndControl();
+    updateSystemControl();
     activeBms = nullptr;
     stateTimer = millis();
     currentState = STATE_WAIT_INTERVAL;
@@ -320,11 +320,10 @@ void updateRelayState(bool autoDesiredState) {
   }
 }
 
-void evaluateSystemLogicAndControl()
+void updateSystemControl()
 {
   if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
   {
-    const unsigned long STALE_TIMEOUT_MS = 5 * 60 * 1000;
     unsigned long currentMillis = millis();
 
     // 1. Evaluate individual data validity
@@ -414,11 +413,11 @@ void evaluateSystemLogicAndControl()
       // --- SILENT FAN CONTROL LOGIC ---
       int fanSpeed = 0;
 
-      if (metricsForIO.envTemp >= 45.0)
+      if (metricsForIO.envTemp >= FAN_FULL_TEMP)
       {
         fanSpeed = FAN_MAX_DUTY;
       }
-      else if (metricsForIO.envTemp >= 25.0)
+      else if (metricsForIO.envTemp >= FAN_START_TEMP)
       {
         // Map 25.0C - 45.0C linearly to 80 - 255
         float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
@@ -474,7 +473,7 @@ void evaluateSystemLogicAndControl()
 }
 
 // Thread safe, low priority background UI monitor locked to Core 0
-void uiAndBackgroundWorker(void *parameter)
+void backgroundTask(void *parameter)
 {
   const unsigned long VIEW_INTERVAL = 5000;
   const unsigned long DEBOUNCE_DELAY = 50;
@@ -489,7 +488,7 @@ void uiAndBackgroundWorker(void *parameter)
   for (;;)
   {
     processSerialCommands(); 
-    fetchNanoTelemetry();
+    processNanoTelemetry();
 
     bool advanceView = false;
     unsigned long currentMillis = millis();
