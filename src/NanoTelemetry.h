@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 
+constexpr int NANO_RST_PIN = 27;
+
 struct SensorTelemetry {
     float acVoltage1;
     float acCurrent1;
@@ -20,6 +22,7 @@ struct SensorTelemetry {
 extern SensorTelemetry sensorData;
 
 void setupNanoTelemetry();
-void processNanoTelemetry(); 
+void processNanoTelemetry();
+void resetNano();
 
 #endif

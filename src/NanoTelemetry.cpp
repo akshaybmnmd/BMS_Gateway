@@ -10,8 +10,26 @@ void clearNanoTelemetry();
 
 void setupNanoTelemetry()
 {
+  pinMode(NANO_RST_PIN, OUTPUT);
+  digitalWrite(NANO_RST_PIN, HIGH);
+
   Serial2.begin(9600, SERIAL_8N1, 16, 17);
   Serial.println("[INFO] UART2 Initialized on RX:16, TX:17 for Nano Telemetry.");
+
+  lastSerialRx = millis();
+}
+
+void resetNano()
+{
+  Serial.println("[SYSTEM] Triggering hardware reset on Nano...");
+  
+  digitalWrite(NANO_RST_PIN, LOW);
+  delay(50); // 50ms pulse is plenty to trigger a hard reboot
+  digitalWrite(NANO_RST_PIN, HIGH);
+  
+  // Reset the timer so it gives the Nano a few seconds to boot 
+  // before triggering another timeout
+  lastSerialRx = millis(); 
 }
 
 void processNanoTelemetry()
@@ -58,6 +76,8 @@ void processNanoTelemetry()
 
     // Wipe the struct clean instantly
     clearNanoTelemetry();
+
+    resetNano();
   }
 }
 
