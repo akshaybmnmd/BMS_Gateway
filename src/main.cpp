@@ -136,7 +136,7 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
 void setup()
 {
   Serial.begin(115200);
-  Serial1.begin(WIFI_BAUD, SERIAL_8N1, WIFI_RX_PIN, WIFI_TX_PIN);
+  // Serial1.begin(WIFI_BAUD, SERIAL_8N1, WIFI_RX_PIN, WIFI_TX_PIN);
   pinMode(CONTACTOR_PIN, OUTPUT);
   digitalWrite(CONTACTOR_PIN, LOW);
 
@@ -396,7 +396,7 @@ void updateSystemControl()
 
       xSemaphoreGive(metricsMutex);
 
-      sendTelemetryToWiFi(metricsForIO);
+      // sendTelemetryToWiFi(metricsForIO);
 
       if (millis() - lastLogTime >= LOG_INTERVAL_MS)
       {

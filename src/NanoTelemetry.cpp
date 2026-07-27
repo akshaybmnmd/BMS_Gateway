@@ -16,37 +16,42 @@ void setupNanoTelemetry()
   Serial2.begin(9600, SERIAL_8N1, 16, 17);
   Serial.println("[INFO] UART2 Initialized on RX:16, TX:17 for Nano Telemetry.");
 
+  pinMode(16, INPUT_PULLUP);
+
   lastSerialRx = millis();
 }
 
 void resetNano()
 {
   Serial.println("[SYSTEM] Triggering hardware reset on Nano...");
-  
+
   digitalWrite(NANO_RST_PIN, LOW);
   delay(50); // 50ms pulse is plenty to trigger a hard reboot
   digitalWrite(NANO_RST_PIN, HIGH);
-  
-  // Reset the timer so it gives the Nano a few seconds to boot 
+
+  // Reset the timer so it gives the Nano a few seconds to boot
   // before triggering another timeout
-  lastSerialRx = millis(); 
+  lastSerialRx = millis();
 }
 
 void processNanoTelemetry()
 {
   while (Serial2.available())
   {
+    Serial.print("Serial2 available");
     char payload[AC_PAYLOAD_BUFFER_SIZE];
     size_t len = Serial2.readBytesUntil('\n', payload, sizeof(payload) - 1);
     payload[len] = '\0';
 
     if (len > 0 && payload[0] == '{')
     {
+      Serial.print("got payload");
       StaticJsonDocument<AC_PAYLOAD_BUFFER_SIZE> doc;
       DeserializationError error = deserializeJson(doc, payload);
 
       if (!error)
       {
+        Serial.print("no error");
         sensorData.acVoltage1 = doc["acV1"] | 0.0f;
         sensorData.acCurrent1 = doc["acI1"] | 0.0f;
         sensorData.acVoltage2 = doc["acV2"] | 0.0f;
@@ -66,6 +71,9 @@ void processNanoTelemetry()
         Serial.print("[ERROR] JSON Parse Failed: ");
         Serial.println(error.c_str());
       }
+    }else
+    {
+      Serial.println("[ERROR] Invalid payload received from Nano.");
     }
   }
 
