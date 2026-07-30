@@ -17,14 +17,11 @@ static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t l
   if (activeBms == nullptr)
     return;
 
-  Serial.printf("[DEBUG %lu] Received %zu bytes from BMS %d: ", millis(), length, activeBms->id);
   for (size_t i = 0; i < length; i++)
   {
-    Serial.printf("%02X ", pData[i]);
     if (activeBms->bufferIdx < BMS_BUFFER_SIZE)
       activeBms->buffer[activeBms->bufferIdx++] = pData[i];
   }
-  Serial.println();
 
   if (pData[length - 1] == 0x77)
   {

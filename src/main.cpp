@@ -61,8 +61,8 @@ void processSerialCommands()
   if (Serial.available())
   {
     String cmd = Serial.readStringUntil('\n');
-    cmd.trim();        // Remove any \r or spaces
-    cmd.toLowerCase(); // Make it case-insensitive
+    cmd.trim();
+    cmd.toLowerCase();
 
     if (cmd == "on")
     {
@@ -92,10 +92,8 @@ void processSerialCommands()
 
 void sendTelemetryToWiFi(const SystemMetrics &metrics)
 {
-  // 512 bytes is plenty for this payload
   StaticJsonDocument<512> doc;
 
-  // AC Data
   doc["acV1"] = metrics.acVoltage;
   doc["acI1"] = metrics.acCurrent;
   doc["acW1"] = metrics.acPower;
@@ -103,12 +101,10 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
   doc["acI2"] = metrics.acCurrent2;
   doc["acW2"] = metrics.acPower2;
 
-  // DC & PZEM Data
   doc["dcV"] = metrics.dcVoltage;
   doc["dcI"] = metrics.dcCurrent;
   doc["dcW"] = metrics.dcPower;
 
-  // Battery Data
   doc["bms1V"] = bms1Data.voltage;
   doc["bms1I"] = bms1Data.current;
   doc["bms1Soc"] = bms1Data.soc;
@@ -118,7 +114,6 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
   doc["bms2Soc"] = bms2Data.soc;
   doc["bms2Tmp"] = bms2Data.maxTemp;
 
-  // System Health & Environment
   doc["netI"] = metrics.netCurrent;
   doc["netW"] = metrics.netPower;
   doc["avgSoc"] = metrics.avgSoc;
@@ -128,7 +123,6 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
   doc["envPrs"] = metrics.envPres;
   doc["sysSts"] = (int)metrics.status;
 
-  // Send the payload to the Wi-Fi node, terminating with a newline character
   serializeJson(doc, Serial1);
   Serial1.println();
 }
@@ -286,20 +280,16 @@ void loop()
 
 void updateRelayState(bool autoDesiredState)
 {
-  // 1. Determine final desired state: Override takes precedence over Auto
   bool finalDesiredState = manualOverride ? overrideState : autoDesiredState;
 
-  // 2. No action needed if we are already in the correct state
   if (finalDesiredState == currentRelayState)
     return;
 
-  // 3. Boot Lockout Check (prevents closing during startup)
   if (finalDesiredState == true && millis() < BOOT_DELAY_MS)
   {
     return;
   }
 
-  // 4. Non-blocking 5-second cooldown check
   if (millis() - lastRelaySwitchTime >= RELAY_COOLDOWN_MS)
   {
     digitalWrite(CONTACTOR_PIN, finalDesiredState ? HIGH : LOW);
@@ -323,14 +313,12 @@ void updateSystemControl()
   {
     unsigned long currentMillis = millis();
 
-    // 1. Evaluate individual data validity
     bool bms1Valid = (bms1Data.lastUpdateTime > 0) && (currentMillis - bms1Data.lastUpdateTime < STALE_TIMEOUT_MS);
     bool bms2Valid = (bms2Data.lastUpdateTime > 0) && (currentMillis - bms2Data.lastUpdateTime < STALE_TIMEOUT_MS);
 
     bool bms1Live = bms1Valid && bms1Data.isConnected;
     bool bms2Live = bms2Valid && bms2Data.isConnected;
 
-    // 2. Set explicit Grace Period Status
     if (bms1Live && bms2Live)
     {
       sysMetrics.graceStatus = GRACE_NONE;
@@ -344,7 +332,6 @@ void updateSystemControl()
       sysMetrics.graceStatus = GRACE_EXPIRED;
     }
 
-    // 3. Act on the Status
     if (sysMetrics.graceStatus != GRACE_EXPIRED)
     {
       if (sysMetrics.graceStatus == GRACE_ACTIVE)
@@ -369,9 +356,7 @@ void updateSystemControl()
       else
         sysMetrics.status = STATUS_IDLE;
 
-      // ---> NEW CONTACTOR LOGIC WITH HYSTERESIS <---
-
-      bool desiredRelayState = currentRelayState; // Default to maintaining current state
+      bool desiredRelayState = currentRelayState;
 
       if (sysMetrics.avgSoc > TURN_ON_SOC)
       {
@@ -380,15 +365,11 @@ void updateSystemControl()
       else if (sysMetrics.avgSoc < TURN_OFF_SOC)
       {
         desiredRelayState = false;
-        sysMetrics.status = STATUS_ERROR; // Keep this if you want the UI SYS overview to show ERR
         Serial.println("[WARNING] Battery low! Requesting contactor open.");
       }
 
-      updateRelayState(desiredRelayState);        // Request the state change (handled safely)
-      sysMetrics.relayClosed = currentRelayState; // Lock the actual physical state into the metrics struct
-      // Note: If avgSoc is between 40 and 60, no action is taken.
-      // The contactor naturally maintains its current physical state.
-      // -----------------------------
+      updateRelayState(desiredRelayState);
+      sysMetrics.relayClosed = currentRelayState;
 
       SystemMetrics metricsForIO = sysMetrics;
 
@@ -402,26 +383,26 @@ void updateSystemControl()
         lastLogTime = millis();
       }
 
-      Serial.println("\n================ SYSTEM METRICS ================");
-      Serial.printf("STATUS   : %s\n", statusToString(metricsForIO.status));
-      Serial.println("------------------------------------------------");
-      Serial.printf("BMS 1    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms1Data.voltage, bms1Data.current, bms1Data.power, bms1Data.soc, bms1Data.maxTemp);
-      Serial.printf("BMS 2    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms2Data.voltage, bms2Data.current, bms2Data.power, bms2Data.soc, bms2Data.maxTemp);
-      Serial.println("------------------------------------------------");
-      Serial.printf("AC 1     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
-      Serial.printf("AC 2     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage2, metricsForIO.acCurrent2, metricsForIO.acPower2);
-      Serial.printf("PZEM DC  : %.1fV | %.2fA | %.1fW\n", metricsForIO.dcVoltage, metricsForIO.dcCurrent, metricsForIO.dcPower);
-      Serial.printf("ENV      : Temp: %.1fC | Hum: %.1f%% | Pres: %.1fhPa\n", metricsForIO.envTemp, metricsForIO.envHum, metricsForIO.envPres);
-      Serial.println("------------------------------------------------");
-      Serial.printf("DELTAS   : Volt:%.3fV | Cur:%.2fA | Pwr:%.0fW\n", metricsForIO.voltageDelta, metricsForIO.currentDelta, metricsForIO.powerDelta);
-      Serial.printf("DC TOTAL : Net: %6.2fA | %5.0fW\n", metricsForIO.netCurrent, metricsForIO.netPower);
-      Serial.printf("AC SENSE : %.1fV | %.2fA | %.0f VA\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
-      Serial.printf("HEALTH   : Avg SoC %d%% (Imb %d%%) | Peak Temp %.1fC\n", metricsForIO.avgSoc, metricsForIO.socDelta, metricsForIO.peakTemp);
-      Serial.println("================================================\n");
+      // Serial.println("\n================ SYSTEM METRICS ================");
+      // Serial.printf("STATUS   : %s\n", statusToString(metricsForIO.status));
+      // Serial.println("------------------------------------------------");
+      // Serial.printf("BMS 1    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms1Data.voltage, bms1Data.current, bms1Data.power, bms1Data.soc, bms1Data.maxTemp);
+      // Serial.printf("BMS 2    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms2Data.voltage, bms2Data.current, bms2Data.power, bms2Data.soc, bms2Data.maxTemp);
+      // Serial.println("------------------------------------------------");
+      // Serial.printf("AC 1     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
+      // Serial.printf("AC 2     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage2, metricsForIO.acCurrent2, metricsForIO.acPower2);
+      // Serial.printf("PZEM DC  : %.1fV | %.2fA | %.1fW\n", metricsForIO.dcVoltage, metricsForIO.dcCurrent, metricsForIO.dcPower);
+      // Serial.printf("ENV      : Temp: %.1fC | Hum: %.1f%% | Pres: %.1fhPa\n", metricsForIO.envTemp, metricsForIO.envHum, metricsForIO.envPres);
+      // Serial.println("------------------------------------------------");
+      // Serial.printf("DELTAS   : Volt:%.3fV | Cur:%.2fA | Pwr:%.0fW\n", metricsForIO.voltageDelta, metricsForIO.currentDelta, metricsForIO.powerDelta);
+      // Serial.printf("DC TOTAL : Net: %6.2fA | %5.0fW\n", metricsForIO.netCurrent, metricsForIO.netPower);
+      // Serial.printf("AC SENSE : %.1fV | %.2fA | %.0f VA\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
+      // Serial.printf("HEALTH   : Avg SoC %d%% (Imb %d%%) | Peak Temp %.1fC\n", metricsForIO.avgSoc, metricsForIO.socDelta, metricsForIO.peakTemp);
+      // Serial.println("================================================\n");
     }
     else
     {
-      updateRelayState(false); // Safely request open
+      updateRelayState(false);
       sysMetrics.status = STATUS_ERROR;
       sysMetrics.relayClosed = currentRelayState;
       xSemaphoreGive(metricsMutex);
@@ -436,7 +417,7 @@ void updateSystemControl()
 
 void backgroundTask(void *parameter)
 {
-  const unsigned long VIEW_INTERVAL = 5000;
+  const unsigned long VIEW_INTERVAL = 3000;
   const unsigned long DEBOUNCE_DELAY = 50;
   unsigned long lastScreenUpdate = 0;
   const unsigned long SCREEN_REFRESH_MS = 1000;
@@ -450,6 +431,23 @@ void backgroundTask(void *parameter)
   {
     processSerialCommands();
     processNanoTelemetry();
+
+    int fanSpeed = 0;
+
+    if (sensorData.temperature >= FAN_FULL_TEMP)
+    {
+      fanSpeed = FAN_MAX_DUTY;
+    }
+    else if (sensorData.temperature >= FAN_START_TEMP)
+    {
+      float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
+      float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
+      fanSpeed = (int)((float)FAN_MIN_DUTY + ((sensorData.temperature - FAN_START_TEMP) * (pwmRange / tempRange)));
+    }
+    else
+    {
+      fanSpeed = 0;
+    }
 
     if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
@@ -466,41 +464,20 @@ void backgroundTask(void *parameter)
       sysMetrics.envHum = sensorData.humidity;
       sysMetrics.envPres = sensorData.pressure;
       sysMetrics.nano_connected = sensorData.nano_connected;
+      sysMetrics.fan_speed = fanSpeed;
       xSemaphoreGive(metricsMutex);
     }
 
-    // --- SILENT FAN CONTROL LOGIC ---
-    int fanSpeed = 0;
-
-    if (sensorData.temperature >= FAN_FULL_TEMP)
-    {
-      fanSpeed = FAN_MAX_DUTY;
-    }
-    else if (sensorData.temperature >= FAN_START_TEMP)
-    {
-      // Map 25.0C - 45.0C linearly to 80 - 255
-      float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
-      float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
-      fanSpeed = (int)((float)FAN_MIN_DUTY + ((sensorData.temperature - FAN_START_TEMP) * (pwmRange / tempRange)));
-    }
-    else
-    {
-      fanSpeed = 0;
-    }
-
     ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
-    // -----------------------------
 
     bool advanceView = false;
     unsigned long currentMillis = millis();
 
-    // 1. Timer-Based Auto Rotate
     if (currentMillis - lastViewChange >= VIEW_INTERVAL)
     {
       advanceView = true;
     }
 
-    // 2. Physical Debounced Button Read
     bool reading = digitalRead(BUTTON_PIN);
     if (reading != lastButtonState)
     {
@@ -521,18 +498,14 @@ void backgroundTask(void *parameter)
     }
     lastButtonState = reading;
 
-    // 3. Process View Layout Wrap-Around & Force Update flag
-    bool forceUpdate = advanceView;
     if (advanceView)
     {
-      currentView = (currentView + 1) % 5; // Max 5 views (0 through 4)
+      currentView = (currentView + 1) % 5;
       lastViewChange = currentMillis;
     }
 
-    // 4. Only draw to the screen once per second, OR if the button was just pressed
-    if (forceUpdate || (currentMillis - lastScreenUpdate >= SCREEN_REFRESH_MS))
+    if (advanceView || (currentMillis - lastScreenUpdate >= SCREEN_REFRESH_MS))
     {
-      // Snapshot Strategy: Lock data, copy struct instantly, unlock immediately
       SystemMetrics localMetricsSnapshot;
       bool snapshotValid = false;
 
@@ -543,15 +516,13 @@ void backgroundTask(void *parameter)
         snapshotValid = true;
       }
 
-      // 5. Draw outside the critical section to prevent clogging Core 1
       if (snapshotValid)
       {
         updateDisplay(localMetricsSnapshot, currentView);
-        lastScreenUpdate = currentMillis; // Reset the 1-second refresh timer
+        lastScreenUpdate = currentMillis;
       }
     }
 
-    // Block this task for 100ms. Gives CPU cycles completely back to Core 0's radio stacks.
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }

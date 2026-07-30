@@ -133,6 +133,9 @@ void drawEnvironmentScreen(const SystemMetrics &metrics)
 
   snprintf(buf, sizeof(buf), "Press: %.1f hPa", metrics.envPres);
   u8g2.drawStr(0, 51, buf);
+  
+  snprintf(buf, sizeof(buf), "Press: %.1f hPa", metrics.envPres);
+  u8g2.drawStr(0, 51, buf);
 }
 
 void updateDisplay(const SystemMetrics &metrics, int currentView)

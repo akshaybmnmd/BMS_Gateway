@@ -35,20 +35,17 @@ void processNanoTelemetry()
 {
   while (Serial2.available())
   {
-    Serial.print("Serial2 available");
     char payload[AC_PAYLOAD_BUFFER_SIZE];
     size_t len = Serial2.readBytesUntil('\n', payload, sizeof(payload) - 1);
     payload[len] = '\0';
 
     if (len > 0 && payload[0] == '{')
     {
-      Serial.print("got payload");
       StaticJsonDocument<AC_PAYLOAD_BUFFER_SIZE> doc;
       DeserializationError error = deserializeJson(doc, payload);
 
       if (!error)
       {
-        Serial.print("no error");
         sensorData.acVoltage1 = doc["acV1"] | 0.0f;
         sensorData.acCurrent1 = doc["acI1"] | 0.0f;
         sensorData.acVoltage2 = doc["acV2"] | 0.0f;
@@ -74,12 +71,10 @@ void processNanoTelemetry()
     }
   }
 
-  // Safety net timeout
   if (sensorData.nano_connected && (millis() - lastSerialRx > SERIAL_TIMEOUT_MS))
   {
     Serial.println("[WARNING] Nano Serial Telemetry Timeout!");
 
-    // Wipe the struct clean instantly
     clearNanoTelemetry();
 
     resetNano();
