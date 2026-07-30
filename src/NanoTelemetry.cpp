@@ -13,7 +13,7 @@ void clearNanoTelemetry();
 void setupNanoTelemetry()
 {
   pinMode(NANO_RST_PIN, OUTPUT);
-  resetNano();
+  digitalWrite(NANO_RST_PIN, HIGH);
 
   Serial2.begin(NANO_BAUD, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
 
