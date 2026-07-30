@@ -58,9 +58,19 @@ void updateRelayState(bool desiredState);
 
 void processSerialCommands()
 {
+  String cmd = "";
+
   if (Serial.available())
   {
-    String cmd = Serial.readStringUntil('\n');
+    cmd = Serial.readStringUntil('\n');
+  }
+  else if (Serial1.available())
+  {
+    cmd = Serial1.readStringUntil('\n');
+  }
+
+  if (cmd.length() > 0)
+  {
     cmd.trim();
     cmd.toLowerCase();
 
@@ -68,14 +78,14 @@ void processSerialCommands()
     {
       manualOverride = true;
       overrideState = true;
-      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced ON");
+      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced ON via command");
       updateRelayState(true);
     }
     else if (cmd == "off")
     {
       manualOverride = true;
       overrideState = false;
-      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced OFF");
+      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced OFF via command");
       updateRelayState(false);
     }
     else if (cmd == "auto")
@@ -85,7 +95,7 @@ void processSerialCommands()
     }
     else
     {
-      Serial.println("\n[ERROR] Unknown command. Valid commands: 'on', 'off', 'auto'.");
+      Serial.printf("\n[ERROR] Unknown command received: '%s'. Valid commands: 'on', 'off', 'auto'.\n", cmd.c_str());
     }
   }
 }
