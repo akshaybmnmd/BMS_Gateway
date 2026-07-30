@@ -122,6 +122,7 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
   doc["envHum"] = metrics.envHum;
   doc["envPrs"] = metrics.envPres;
   doc["sysSts"] = (int)metrics.status;
+  doc["fanSpd"] = (int)metrics.fan_speed;
 
   serializeJson(doc, Serial1);
   Serial1.println();
