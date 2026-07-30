@@ -358,7 +358,7 @@ void updateSystemControl()
 
       bool desiredRelayState = currentRelayState;
 
-      if (sysMetrics.avgSoc > TURN_ON_SOC)
+      if (sysMetrics.avgSoc >= TURN_ON_SOC)
       {
         desiredRelayState = true;
       }
