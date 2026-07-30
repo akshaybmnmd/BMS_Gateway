@@ -356,58 +356,25 @@ void updateSystemControl()
         sysMetrics.status = STATUS_DISCHARGING;
       else
         sysMetrics.status = STATUS_IDLE;
-
-      bool desiredRelayState = currentRelayState;
-
-      if (sysMetrics.avgSoc >= TURN_ON_SOC)
-      {
-        desiredRelayState = true;
-      }
-      else if (sysMetrics.avgSoc < TURN_OFF_SOC)
-      {
-        desiredRelayState = false;
-        Serial.println("[WARNING] Battery low! Requesting contactor open.");
-      }
-
-      updateRelayState(desiredRelayState);
-      sysMetrics.relayClosed = currentRelayState;
-
-      SystemMetrics metricsForIO = sysMetrics;
-
-      xSemaphoreGive(metricsMutex);
-
-      sendTelemetryToWiFi(metricsForIO);
-
-      if (millis() - lastLogTime >= LOG_INTERVAL_MS)
-      {
-        logMetricsToFlash(metricsForIO);
-        lastLogTime = millis();
-      }
-
-      // Serial.println("\n================ SYSTEM METRICS ================");
-      // Serial.printf("STATUS   : %s\n", statusToString(metricsForIO.status));
-      // Serial.println("------------------------------------------------");
-      // Serial.printf("BMS 1    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms1Data.voltage, bms1Data.current, bms1Data.power, bms1Data.soc, bms1Data.maxTemp);
-      // Serial.printf("BMS 2    : %.2fV | %6.2fA | %5.0fW | %3d%% | %.1fC\n", bms2Data.voltage, bms2Data.current, bms2Data.power, bms2Data.soc, bms2Data.maxTemp);
-      // Serial.println("------------------------------------------------");
-      // Serial.printf("AC 1     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
-      // Serial.printf("AC 2     : %.1fV | %.2fA | %.0fW\n", metricsForIO.acVoltage2, metricsForIO.acCurrent2, metricsForIO.acPower2);
-      // Serial.printf("PZEM DC  : %.1fV | %.2fA | %.1fW\n", metricsForIO.dcVoltage, metricsForIO.dcCurrent, metricsForIO.dcPower);
-      // Serial.printf("ENV      : Temp: %.1fC | Hum: %.1f%% | Pres: %.1fhPa\n", metricsForIO.envTemp, metricsForIO.envHum, metricsForIO.envPres);
-      // Serial.println("------------------------------------------------");
-      // Serial.printf("DELTAS   : Volt:%.3fV | Cur:%.2fA | Pwr:%.0fW\n", metricsForIO.voltageDelta, metricsForIO.currentDelta, metricsForIO.powerDelta);
-      // Serial.printf("DC TOTAL : Net: %6.2fA | %5.0fW\n", metricsForIO.netCurrent, metricsForIO.netPower);
-      // Serial.printf("AC SENSE : %.1fV | %.2fA | %.0f VA\n", metricsForIO.acVoltage, metricsForIO.acCurrent, metricsForIO.acPower);
-      // Serial.printf("HEALTH   : Avg SoC %d%% (Imb %d%%) | Peak Temp %.1fC\n", metricsForIO.avgSoc, metricsForIO.socDelta, metricsForIO.peakTemp);
-      // Serial.println("================================================\n");
     }
     else
     {
-      updateRelayState(false);
       sysMetrics.status = STATUS_ERROR;
-      sysMetrics.relayClosed = currentRelayState;
-      xSemaphoreGive(metricsMutex);
       Serial.println("\n[CRITICAL ERROR] BMS Data Timeout (5+ min). Defaulting to safe state.");
+    }
+
+    // Capture a thread-safe snapshot for the slow I/O operations
+    SystemMetrics metricsForIO = sysMetrics;
+
+    xSemaphoreGive(metricsMutex);
+
+    // Send telemetry via UART to the Wi-Fi node using the snapshot
+    sendTelemetryToWiFi(metricsForIO);
+
+    if (millis() - lastLogTime >= LOG_INTERVAL_MS)
+    {
+      logMetricsToFlash(metricsForIO);
+      lastLogTime = millis();
     }
   }
   else
@@ -466,6 +433,29 @@ void backgroundTask(void *parameter)
       sysMetrics.envPres = sensorData.pressure;
       sysMetrics.nano_connected = sensorData.nano_connected;
       sysMetrics.fan_speed = fanSpeed;
+      bool desiredRelayState = currentRelayState;
+
+      if (sysMetrics.graceStatus == GRACE_EXPIRED)
+      {
+        desiredRelayState = false;
+      }
+      else
+      {
+        if (sysMetrics.avgSoc > TURN_ON_SOC)
+        {
+          desiredRelayState = true;
+        }
+        else if (sysMetrics.avgSoc < TURN_OFF_SOC)
+        {
+          desiredRelayState = false;
+          if (currentRelayState == true) {
+            Serial.println("[WARNING] Battery low! Requesting contactor open.");
+          }
+        }
+      }
+
+      updateRelayState(desiredRelayState);
+      sysMetrics.relayClosed = currentRelayState;
       xSemaphoreGive(metricsMutex);
     }
 
