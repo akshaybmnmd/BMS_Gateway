@@ -6,7 +6,7 @@
 #include "DisplayDriver.h"
 #include <ArduinoJson.h>
 
-TaskHandle_t DisplayTaskHandle = NULL;
+TaskHandle_t NanoTelemetryHandle = NULL;
 
 enum AppState
 {
@@ -33,8 +33,8 @@ const int BUTTON_PIN = 15;
 const int CONTACTOR_PIN = 32;
 const int FAN_PIN = 13;
 const int FAN_PWM_CHANNEL = 0;
-const int FAN_PWM_FREQ = 25000; // 25 kHz pushes coil whine above human hearing
-const int FAN_PWM_RES = 8;      // 8-bit resolution (0-255)
+const int FAN_PWM_FREQ = 25000;
+const int FAN_PWM_RES = 8;
 const int TURN_ON_SOC = 60;
 const int TURN_OFF_SOC = 40;
 const unsigned long BOOT_DELAY_MS = 15000;
@@ -102,35 +102,35 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
   doc["acV2"] = metrics.acVoltage2;
   doc["acI2"] = metrics.acCurrent2;
   doc["acW2"] = metrics.acPower2;
-  
+
   // DC & PZEM Data
-  doc["dcV"]  = metrics.dcVoltage;
-  doc["dcI"]  = metrics.dcCurrent;
-  doc["dcW"]  = metrics.dcPower;
-  
+  doc["dcV"] = metrics.dcVoltage;
+  doc["dcI"] = metrics.dcCurrent;
+  doc["dcW"] = metrics.dcPower;
+
   // Battery Data
-  doc["bms1V"]   = bms1Data.voltage;
-  doc["bms1I"]   = bms1Data.current;
+  doc["bms1V"] = bms1Data.voltage;
+  doc["bms1I"] = bms1Data.current;
   doc["bms1Soc"] = bms1Data.soc;
   doc["bms1Tmp"] = bms1Data.maxTemp;
-  doc["bms2V"]   = bms2Data.voltage;
-  doc["bms2I"]   = bms2Data.current;
+  doc["bms2V"] = bms2Data.voltage;
+  doc["bms2I"] = bms2Data.current;
   doc["bms2Soc"] = bms2Data.soc;
   doc["bms2Tmp"] = bms2Data.maxTemp;
-  
+
   // System Health & Environment
-  doc["netI"]   = metrics.netCurrent;
-  doc["netW"]   = metrics.netPower;
+  doc["netI"] = metrics.netCurrent;
+  doc["netW"] = metrics.netPower;
   doc["avgSoc"] = metrics.avgSoc;
-  doc["relay"]  = metrics.relayClosed;
+  doc["relay"] = metrics.relayClosed;
   doc["envTmp"] = metrics.envTemp;
   doc["envHum"] = metrics.envHum;
   doc["envPrs"] = metrics.envPres;
-  doc["sysSts"] = (int)metrics.status; 
+  doc["sysSts"] = (int)metrics.status;
 
   // Send the payload to the Wi-Fi node, terminating with a newline character
   serializeJson(doc, Serial1);
-  Serial1.println(); 
+  Serial1.println();
 }
 
 void setup()
@@ -158,24 +158,15 @@ void setup()
   setupNanoTelemetry();
   setupBLE();
 
-  xTaskCreatePinnedToCore(
-      backgroundTask,
-      "BackgroundCore0",
-      4096,
-      NULL,
-      1,
-      &DisplayTaskHandle,
-      0);
+  xTaskCreatePinnedToCore(backgroundTask, "BackgroundCore0", 4096, NULL, 1, &NanoTelemetryHandle, 0);
 
   Serial.println("\n--- System Setup Complete. Waiting for initial interval... ---");
 }
 
 void loop()
 {
-  // Core 1 runs the BLE State Machine completely decoupled from display refreshes
   switch (currentState)
   {
-
   case STATE_WAIT_INTERVAL:
     if (millis() - stateTimer >= READ_INTERVAL_MS)
     {
@@ -293,28 +284,35 @@ void loop()
   }
 }
 
-void updateRelayState(bool autoDesiredState) {
+void updateRelayState(bool autoDesiredState)
+{
   // 1. Determine final desired state: Override takes precedence over Auto
   bool finalDesiredState = manualOverride ? overrideState : autoDesiredState;
 
   // 2. No action needed if we are already in the correct state
-  if (finalDesiredState == currentRelayState) return; 
+  if (finalDesiredState == currentRelayState)
+    return;
 
   // 3. Boot Lockout Check (prevents closing during startup)
-  if (finalDesiredState == true && millis() < BOOT_DELAY_MS) {
-    return; 
+  if (finalDesiredState == true && millis() < BOOT_DELAY_MS)
+  {
+    return;
   }
 
   // 4. Non-blocking 5-second cooldown check
-  if (millis() - lastRelaySwitchTime >= RELAY_COOLDOWN_MS) {
+  if (millis() - lastRelaySwitchTime >= RELAY_COOLDOWN_MS)
+  {
     digitalWrite(CONTACTOR_PIN, finalDesiredState ? HIGH : LOW);
     currentRelayState = finalDesiredState;
     lastRelaySwitchTime = millis();
-    
-    if (manualOverride) {
-        Serial.printf("\n[OVERRIDE] Contactor physically forced to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
-    } else {
-        Serial.printf("\n[INFO] Auto-Logic Contactor switched to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
+
+    if (manualOverride)
+    {
+      Serial.printf("\n[OVERRIDE] Contactor physically forced to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
+    }
+    else
+    {
+      Serial.printf("\n[INFO] Auto-Logic Contactor switched to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
     }
   }
 }
@@ -436,7 +434,6 @@ void updateSystemControl()
   }
 }
 
-// Thread safe, low priority background UI monitor locked to Core 0
 void backgroundTask(void *parameter)
 {
   const unsigned long VIEW_INTERVAL = 5000;
@@ -451,7 +448,7 @@ void backgroundTask(void *parameter)
 
   for (;;)
   {
-    processSerialCommands(); 
+    processSerialCommands();
     processNanoTelemetry();
 
     if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
@@ -473,26 +470,26 @@ void backgroundTask(void *parameter)
     }
 
     // --- SILENT FAN CONTROL LOGIC ---
-      int fanSpeed = 0;
+    int fanSpeed = 0;
 
-      if (sensorData.temperature >= FAN_FULL_TEMP)
-      {
-        fanSpeed = FAN_MAX_DUTY;
-      }
-      else if (sensorData.temperature >= FAN_START_TEMP)
-      {
-        // Map 25.0C - 45.0C linearly to 80 - 255
-        float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
-        float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
-        fanSpeed = (int)((float)FAN_MIN_DUTY + ((sensorData.temperature - FAN_START_TEMP) * (pwmRange / tempRange)));
-      }
-      else
-      {
-        fanSpeed = 0; // Off
-      }
+    if (sensorData.temperature >= FAN_FULL_TEMP)
+    {
+      fanSpeed = FAN_MAX_DUTY;
+    }
+    else if (sensorData.temperature >= FAN_START_TEMP)
+    {
+      // Map 25.0C - 45.0C linearly to 80 - 255
+      float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
+      float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
+      fanSpeed = (int)((float)FAN_MIN_DUTY + ((sensorData.temperature - FAN_START_TEMP) * (pwmRange / tempRange)));
+    }
+    else
+    {
+      fanSpeed = 0;
+    }
 
-      ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
-      // -----------------------------
+    ledcWrite(FAN_PWM_CHANNEL, fanSpeed);
+    // -----------------------------
 
     bool advanceView = false;
     unsigned long currentMillis = millis();

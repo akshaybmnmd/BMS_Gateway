@@ -2,19 +2,20 @@
 #include <ArduinoJson.h>
 #include "Config.h"
 
-// Zero-initialize the entire struct
 SensorTelemetry sensorData = {};
 unsigned long lastSerialRx = 0;
+const int NANO_RX_PIN = 16;
+const int NANO_TX_PIN = 17;
+const int NANO_BAUD = 9600;
 
 void clearNanoTelemetry();
 
 void setupNanoTelemetry()
 {
   pinMode(NANO_RST_PIN, OUTPUT);
-  digitalWrite(NANO_RST_PIN, HIGH);
+  resetNano();
 
-  Serial2.begin(9600, SERIAL_8N1, 16, 17);
-  Serial.println("[INFO] UART2 Initialized on RX:16, TX:17 for Nano Telemetry.");
+  Serial2.begin(NANO_BAUD, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
 
   lastSerialRx = millis();
 }
@@ -24,11 +25,9 @@ void resetNano()
   Serial.println("[SYSTEM] Triggering hardware reset on Nano...");
 
   digitalWrite(NANO_RST_PIN, LOW);
-  delay(50); // 50ms pulse is plenty to trigger a hard reboot
+  delay(50);
   digitalWrite(NANO_RST_PIN, HIGH);
 
-  // Reset the timer so it gives the Nano a few seconds to boot
-  // before triggering another timeout
   lastSerialRx = millis();
 }
 
@@ -89,6 +88,5 @@ void processNanoTelemetry()
 
 void clearNanoTelemetry()
 {
-  // This safely zeroes out all floats and sets the boolean to false
   sensorData = {};
 }

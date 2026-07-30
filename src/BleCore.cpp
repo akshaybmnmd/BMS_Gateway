@@ -9,19 +9,22 @@ NimBLEClient *pClient = nullptr;
 NimBLERemoteCharacteristic *pActiveWriteChar = nullptr;
 const uint8_t basicInfoCmd[] = {0xDD, 0xA5, 0x03, 0x00, 0xFF, 0xFD, 0x77};
 
-void clearBmsBuffer(BmsData* bms);
-void resetBmsState(BmsData* bms);
+void clearBmsBuffer(BmsData *bms);
+void resetBmsState(BmsData *bms);
 
 static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t length, bool isNotify)
 {
   if (activeBms == nullptr)
     return;
 
+  Serial.printf("[DEBUG %lu] Received %zu bytes from BMS %d: ", millis(), length, activeBms->id);
   for (size_t i = 0; i < length; i++)
   {
+    Serial.printf("%02X ", pData[i]);
     if (activeBms->bufferIdx < BMS_BUFFER_SIZE)
       activeBms->buffer[activeBms->bufferIdx++] = pData[i];
   }
+  Serial.println();
 
   if (pData[length - 1] == 0x77)
   {
@@ -46,7 +49,7 @@ static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t l
             highestTemp = celsius;
         }
       }
-      activeBms->maxTemp = (highestTemp > -50.0) ? highestTemp : 0.0; // Fallback if no sensors found
+      activeBms->maxTemp = (highestTemp > -50.0) ? highestTemp : 0.0;
 
       activeBms->isConnected = true;
       activeBms->dataReady = true;
@@ -129,18 +132,18 @@ bool triggerBmsRead()
   return false;
 }
 
-// Clears just the payload buffer (safe to use after parsing)
-void clearBmsBuffer(BmsData* bms)
+void clearBmsBuffer(BmsData *bms)
 {
-    if (bms == nullptr) return;
-    bms->bufferIdx = 0;
-    memset(bms->buffer, 0, sizeof(bms->buffer));
+  if (bms == nullptr)
+    return;
+  bms->bufferIdx = 0;
+  memset(bms->buffer, 0, sizeof(bms->buffer));
 }
 
-// Full reset for disconnections and initialization
-void resetBmsState(BmsData* bms)
+void resetBmsState(BmsData *bms)
 {
-    if (bms == nullptr) return;
-    bms->dataReady = false;
-    clearBmsBuffer(bms);
+  if (bms == nullptr)
+    return;
+  bms->dataReady = false;
+  clearBmsBuffer(bms);
 }
