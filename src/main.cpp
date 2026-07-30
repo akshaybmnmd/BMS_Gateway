@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "Config.h"
 #include "BleCore.h"
-#include "DataLogger.h"
+// #include "DataLogger.h"
 #include "NanoTelemetry.h"
 #include "DisplayDriver.h"
 #include <ArduinoJson.h>
@@ -381,11 +381,11 @@ void updateSystemControl()
     // Send telemetry via UART to the Wi-Fi node using the snapshot
     sendTelemetryToWiFi(metricsForIO);
 
-    if (millis() - lastLogTime >= LOG_INTERVAL_MS)
-    {
-      logMetricsToFlash(metricsForIO);
-      lastLogTime = millis();
-    }
+    // if (millis() - lastLogTime >= LOG_INTERVAL_MS)
+    // {
+    //   logMetricsToFlash(metricsForIO);
+    //   lastLogTime = millis();
+    // }
   }
   else
   {
