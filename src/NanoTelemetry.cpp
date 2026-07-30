@@ -16,8 +16,6 @@ void setupNanoTelemetry()
   Serial2.begin(9600, SERIAL_8N1, 16, 17);
   Serial.println("[INFO] UART2 Initialized on RX:16, TX:17 for Nano Telemetry.");
 
-  pinMode(16, INPUT_PULLUP);
-
   lastSerialRx = millis();
 }
 
