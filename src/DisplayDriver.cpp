@@ -90,7 +90,6 @@ void drawHardwareFlagsScreen(const SystemMetrics &metrics)
   snprintf(buf, sizeof(buf), "BMS2 BLE: %s", bms2Data.isConnected ? "CONN" : "DROP");
   u8g2.drawStr(0, 38, buf);
 
-  // CHANGED: Reflects Nano Serial connection instead of I2C ADC
   snprintf(buf, sizeof(buf), "Nano RX : %s", metrics.nano_connected ? "OK" : "ERR");
   u8g2.drawStr(0, 51, buf);
 
@@ -133,9 +132,9 @@ void drawEnvironmentScreen(const SystemMetrics &metrics)
 
   snprintf(buf, sizeof(buf), "Press: %.1f hPa", metrics.envPres);
   u8g2.drawStr(0, 51, buf);
-  
-  snprintf(buf, sizeof(buf), "Press: %.1f hPa", metrics.envPres);
-  u8g2.drawStr(0, 51, buf);
+
+  snprintf(buf, sizeof(buf), "Fan Speed: %d RPM", metrics.fan_speed);
+  u8g2.drawStr(0, 64, buf);
 }
 
 void updateDisplay(const SystemMetrics &metrics, int currentView)
