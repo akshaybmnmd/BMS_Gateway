@@ -28,10 +28,10 @@ constexpr size_t BMS_BUFFER_SIZE = 64;
 constexpr size_t AC_PAYLOAD_BUFFER_SIZE = 384;
 
 // --- Fan & Thermal Tuning ---
-constexpr float FAN_START_TEMP = 30.0f;     // Ambient start
-constexpr float FAN_FULL_TEMP = 50.0f;      // Ambient max
-constexpr float ESP_FAN_START_TEMP = 50.0f; // ESP32 core start
-constexpr float ESP_FAN_FULL_TEMP = 70.0f;  // ESP32 core max
+constexpr float FAN_START_TEMP = 32.0f;     // Ambient start
+constexpr float FAN_FULL_TEMP = 42.0f;      // Ambient max
+constexpr float ESP_FAN_START_TEMP = 52.0f; // ESP32 core start
+constexpr float ESP_FAN_FULL_TEMP = 62.0f;  // ESP32 core max
 constexpr int FAN_MIN_DUTY = 80;
 constexpr int FAN_MAX_DUTY = 255;
 
