@@ -61,25 +61,25 @@ void updateRelayState(bool desiredState);
 
 namespace
 {
-GracePeriodStatus lastReportedGraceStatus = GRACE_NONE;
+  GracePeriodStatus lastReportedGraceStatus = GRACE_NONE;
 
-BmsMetrics makeBmsMetricsSnapshot(const BmsData &bms)
-{
-  return {
-      bms.voltage,
-      bms.current,
-      bms.power,
-      bms.maxTemp,
-      bms.remainingCapacityAh,
-      bms.soc,
-      bms.cycleCount,
-      bms.isConnected,
-      bms.chargeMosEnabled,
-      bms.dischargeMosEnabled,
-      bms.lastUpdateTime};
-}
+  BmsMetrics makeBmsMetricsSnapshot(const BmsData &bms)
+  {
+    return {
+        bms.voltage,
+        bms.current,
+        bms.power,
+        bms.maxTemp,
+        bms.remainingCapacityAh,
+        bms.soc,
+        bms.cycleCount,
+        bms.isConnected,
+        bms.chargeMosEnabled,
+        bms.dischargeMosEnabled,
+        bms.lastUpdateTime};
+  }
 
-void updateReportedRelayState(bool relayClosed)
+  void updateReportedRelayState(bool relayClosed)
   {
     if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
@@ -232,6 +232,9 @@ void setup()
   ledcSetup(FAN_PWM_CHANNEL, FAN_PWM_FREQ, FAN_PWM_RES);
   ledcAttachPin(FAN_PIN, FAN_PWM_CHANNEL);
 
+  setupDisplay();
+  drawSplashScreen();
+
   // --- 10-SECOND FAN HARDWARE TEST ---
   Serial.println("[SYSTEM] Running 10-second Fan Hardware Sweep...");
 
@@ -262,8 +265,6 @@ void setup()
       ;
   }
 
-  setupDisplay();
-  drawSplashScreen();
   setupNanoTelemetry();
   setupBLE();
 
