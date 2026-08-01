@@ -10,9 +10,9 @@
 const std::string BMS1_MAC = "a5:c2:39:1d:e6:2e";
 const std::string BMS2_MAC = "a5:c2:39:1d:e5:9b";
 
-const char* const BMS_SERVICE_UUID = "FF00";
-const char* const BMS_CHAR_NOTIFY_UUID = "FF01";
-const char* const BMS_CHAR_WRITE_UUID = "FF02";
+const char *const BMS_SERVICE_UUID = "FF00";
+const char *const BMS_CHAR_NOTIFY_UUID = "FF01";
+const char *const BMS_CHAR_WRITE_UUID = "FF02";
 
 // --- Timing & Intervals ---
 constexpr unsigned long READ_INTERVAL_MS = 10000;
@@ -28,12 +28,15 @@ constexpr size_t BMS_BUFFER_SIZE = 64;
 constexpr size_t AC_PAYLOAD_BUFFER_SIZE = 384;
 
 // --- Fan & Thermal Tuning ---
-constexpr float FAN_START_TEMP = 25.0f;
-constexpr float FAN_FULL_TEMP = 45.0f;
+constexpr float FAN_START_TEMP = 30.0f;     // Ambient start
+constexpr float FAN_FULL_TEMP = 50.0f;      // Ambient max
+constexpr float ESP_FAN_START_TEMP = 40.0f; // ESP32 core start
+constexpr float ESP_FAN_FULL_TEMP = 60.0f;  // ESP32 core max
 constexpr int FAN_MIN_DUTY = 80;
 constexpr int FAN_MAX_DUTY = 255;
 
-struct BmsData {
+struct BmsData
+{
   uint8_t id;
   float voltage;
   float current;
@@ -49,20 +52,23 @@ struct BmsData {
   unsigned long lastUpdateTime;
 };
 
-enum SystemStatus {
+enum SystemStatus
+{
   STATUS_IDLE,
   STATUS_CHARGING,
   STATUS_DISCHARGING,
   STATUS_ERROR
 };
 
-enum GracePeriodStatus {
-  GRACE_NONE,     // BLE is connected, data is live
-  GRACE_ACTIVE,   // BLE dropped, operating safely on cached data (< 5 mins old)
-  GRACE_EXPIRED   // Timeout exceeded, data is dangerously stale
+enum GracePeriodStatus
+{
+  GRACE_NONE,   // BLE is connected, data is live
+  GRACE_ACTIVE, // BLE dropped, operating safely on cached data (< 5 mins old)
+  GRACE_EXPIRED // Timeout exceeded, data is dangerously stale
 };
 
-struct SystemMetrics {
+struct SystemMetrics
+{
   float netCurrent;
   float currentDelta;
   float netPower;
@@ -84,6 +90,7 @@ struct SystemMetrics {
   float dcPower;
   float acPower;
   float envTemp;
+  float espTemp;
   float envHum;
   float envPres;
   bool nano_connected;
@@ -91,12 +98,18 @@ struct SystemMetrics {
   int fan_speed;
 };
 
-static const char* statusToString(SystemStatus status) {
-  switch (status) {
-    case STATUS_IDLE: return "IDLE";
-    case STATUS_CHARGING: return "CHARGING";
-    case STATUS_DISCHARGING: return "DISCHARGING";
-    default: return "ERROR";
+static const char *statusToString(SystemStatus status)
+{
+  switch (status)
+  {
+  case STATUS_IDLE:
+    return "IDLE";
+  case STATUS_CHARGING:
+    return "CHARGING";
+  case STATUS_DISCHARGING:
+    return "DISCHARGING";
+  default:
+    return "ERROR";
   }
 }
 

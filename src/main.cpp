@@ -144,6 +144,7 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
   doc["avgSoc"] = metrics.avgSoc;
   doc["relay"] = metrics.relayClosed;
   doc["envTmp"] = metrics.envTemp;
+  doc["espTmp"] = metrics.espTemp;
   doc["envHum"] = metrics.envHum;
   doc["envPrs"] = metrics.envPres;
   doc["sysSts"] = (int)metrics.status;
@@ -167,6 +168,28 @@ void setup()
 
   ledcSetup(FAN_PWM_CHANNEL, FAN_PWM_FREQ, FAN_PWM_RES);
   ledcAttachPin(FAN_PIN, FAN_PWM_CHANNEL);
+
+  // --- 10-SECOND FAN HARDWARE TEST ---
+  Serial.println("[SYSTEM] Running 10-second Fan Hardware Sweep...");
+
+  // Calculate delay per step to ensure a smooth 5-second ramp up and 5-second ramp down
+  int stepDelay = 5000 / (FAN_MAX_DUTY - FAN_MIN_DUTY + 1);
+
+  // Ramp Up (5 seconds)
+  for (int duty = FAN_MIN_DUTY; duty <= FAN_MAX_DUTY; duty++)
+  {
+    ledcWrite(FAN_PWM_CHANNEL, duty);
+    delay(stepDelay);
+  }
+  // Ramp Down (5 seconds)
+  for (int duty = FAN_MAX_DUTY; duty >= FAN_MIN_DUTY; duty--)
+  {
+    ledcWrite(FAN_PWM_CHANNEL, duty);
+    delay(stepDelay);
+  }
+  ledcWrite(FAN_PWM_CHANNEL, 0); // Ensure it shuts off completely after test
+  Serial.println("[SYSTEM] Fan Test Complete.");
+  // -----------------------------------
 
   metricsMutex = xSemaphoreCreateMutex();
   if (metricsMutex == NULL)
@@ -428,22 +451,31 @@ void backgroundTask(void *parameter)
     processSerialCommands();
     processNanoTelemetry();
 
-    int fanSpeed = 0;
+    float currentEnvTemp = sensorData.temperature;
+    float currentEspTemp = temperatureRead(); // ESP32 internal die temp
 
-    if (sensorData.temperature >= FAN_FULL_TEMP)
-    {
-      fanSpeed = FAN_MAX_DUTY;
-    }
-    else if (sensorData.temperature >= FAN_START_TEMP)
-    {
+    // 1. Calculate Ambient Fan Requirement
+    int envFanSpeed = 0;
+    if (currentEnvTemp >= FAN_FULL_TEMP) {
+      envFanSpeed = FAN_MAX_DUTY;
+    } else if (currentEnvTemp >= FAN_START_TEMP) {
       float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
       float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
-      fanSpeed = (int)((float)FAN_MIN_DUTY + ((sensorData.temperature - FAN_START_TEMP) * (pwmRange / tempRange)));
+      envFanSpeed = (int)((float)FAN_MIN_DUTY + ((currentEnvTemp - FAN_START_TEMP) * (pwmRange / tempRange)));
     }
-    else
-    {
-      fanSpeed = 0;
+
+    // 2. Calculate ESP32 Core Fan Requirement
+    int espFanSpeed = 0;
+    if (currentEspTemp >= ESP_FAN_FULL_TEMP) {
+      espFanSpeed = FAN_MAX_DUTY;
+    } else if (currentEspTemp >= ESP_FAN_START_TEMP) {
+      float tempRange = ESP_FAN_FULL_TEMP - ESP_FAN_START_TEMP;
+      float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
+      espFanSpeed = (int)((float)FAN_MIN_DUTY + ((currentEspTemp - ESP_FAN_START_TEMP) * (pwmRange / tempRange)));
     }
+
+    // 3. The Winner Takes Control
+    int fanSpeed = (envFanSpeed > espFanSpeed) ? envFanSpeed : espFanSpeed;
 
     if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
@@ -457,6 +489,7 @@ void backgroundTask(void *parameter)
       sysMetrics.dcCurrent = sensorData.dcCurrent;
       sysMetrics.dcPower = sensorData.dcPower;
       sysMetrics.envTemp = sensorData.temperature;
+      sysMetrics.espTemp = currentEspTemp;
       sysMetrics.envHum = sensorData.humidity;
       sysMetrics.envPres = sensorData.pressure;
       sysMetrics.nano_connected = sensorData.nano_connected;

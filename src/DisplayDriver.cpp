@@ -124,7 +124,8 @@ void drawEnvironmentScreen(const SystemMetrics &metrics)
   char buf[32];
   u8g2.drawStr(0, 10, "- ENVIRONMENT DATA -");
 
-  snprintf(buf, sizeof(buf), "Temp : %.1f C", metrics.envTemp);
+  // Show both Env and ESP temperatures on the same line
+  snprintf(buf, sizeof(buf), "Env:%.1fC ESP:%.1fC", metrics.envTemp, metrics.espTemp);
   u8g2.drawStr(0, 25, buf);
 
   snprintf(buf, sizeof(buf), "Humid: %.1f %%", metrics.envHum);
@@ -133,7 +134,8 @@ void drawEnvironmentScreen(const SystemMetrics &metrics)
   snprintf(buf, sizeof(buf), "Press: %.1f hPa", metrics.envPres);
   u8g2.drawStr(0, 51, buf);
 
-  snprintf(buf, sizeof(buf), "Fan Speed: %d RPM", metrics.fan_speed);
+  // Added "PWM" to clarify it's the raw duty cycle, not RPM
+  snprintf(buf, sizeof(buf), "Fan PWM: %d", metrics.fan_speed);
   u8g2.drawStr(0, 64, buf);
 }
 

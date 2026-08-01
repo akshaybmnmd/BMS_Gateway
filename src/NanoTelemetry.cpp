@@ -25,8 +25,7 @@ void clearNanoTelemetry();
 
 void setupNanoTelemetry()
 {
-  // Use open-drain so the ESP32 never drives the line high against the Nano's 5V pull-up
-  pinMode(NANO_RST_PIN, OUTPUT_OPEN_DRAIN);
+  pinMode(NANO_RST_PIN, OUTPUT);
   digitalWrite(NANO_RST_PIN, HIGH);
 
   Serial2.begin(NANO_BAUD, SERIAL_8N1, NANO_RX_PIN, NANO_TX_PIN);
