@@ -5,6 +5,9 @@
 #include "NanoTelemetry.h"
 #include "DisplayDriver.h"
 #include <ArduinoJson.h>
+#include <cmath>
+#include <cstring>
+#include <cctype>
 
 TaskHandle_t NanoTelemetryHandle = NULL;
 
@@ -58,45 +61,57 @@ void updateRelayState(bool desiredState);
 
 void processSerialCommands()
 {
-  String cmd = "";
+  char cmdBuf[64];
+  size_t len = 0;
 
   if (Serial.available())
   {
-    cmd = Serial.readStringUntil('\n');
+    len = Serial.readBytesUntil('\n', cmdBuf, sizeof(cmdBuf) - 1);
   }
   else if (Serial1.available())
   {
-    cmd = Serial1.readStringUntil('\n');
+    len = Serial1.readBytesUntil('\n', cmdBuf, sizeof(cmdBuf) - 1);
   }
 
-  if (cmd.length() > 0)
-  {
-    cmd.trim();
-    cmd.toLowerCase();
+  if (len == 0)
+    return;
 
-    if (cmd == "on")
-    {
-      manualOverride = true;
-      overrideState = true;
-      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced ON via command");
-      updateRelayState(true);
-    }
-    else if (cmd == "off")
-    {
-      manualOverride = true;
-      overrideState = false;
-      Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced OFF via command");
-      updateRelayState(false);
-    }
-    else if (cmd == "auto")
-    {
-      manualOverride = false;
-      Serial.println("\n[OVERRIDE] Manual Mode DISABLED: Returning to Auto Battery Logic");
-    }
-    else
-    {
-      Serial.printf("\n[ERROR] Unknown command received: '%s'. Valid commands: 'on', 'off', 'auto'.\n", cmd.c_str());
-    }
+  cmdBuf[len] = '\0';
+
+  // Trim leading/trailing whitespace
+  char *start = cmdBuf;
+  while (*start && isspace((unsigned char)*start))
+    start++;
+  char *end = start + strlen(start);
+  while (end > start && isspace((unsigned char)*(end - 1)))
+    *(--end) = '\0';
+
+  // Lowercase in-place
+  for (char *p = start; *p; ++p)
+    *p = (char)tolower((unsigned char)*p);
+
+  if (strcmp(start, "on") == 0)
+  {
+    manualOverride = true;
+    overrideState = true;
+    Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced ON via command");
+    updateRelayState(true);
+  }
+  else if (strcmp(start, "off") == 0)
+  {
+    manualOverride = true;
+    overrideState = false;
+    Serial.println("\n[OVERRIDE] Manual Mode ACTIVE: Relay forced OFF via command");
+    updateRelayState(false);
+  }
+  else if (strcmp(start, "auto") == 0)
+  {
+    manualOverride = false;
+    Serial.println("\n[OVERRIDE] Manual Mode DISABLED: Returning to Auto Battery Logic");
+  }
+  else
+  {
+    Serial.printf("\n[ERROR] Unknown command received: '%s'. Valid commands: 'on', 'off', 'auto'.\n", start);
   }
 }
 
@@ -142,6 +157,9 @@ void setup()
 {
   Serial.begin(115200);
   Serial1.begin(WIFI_BAUD, SERIAL_8N1, WIFI_RX_PIN, WIFI_TX_PIN);
+  // Reduce Serial timeouts to avoid blocking readBytesUntil() for long periods
+  Serial.setTimeout(10);
+  Serial1.setTimeout(10);
   pinMode(CONTACTOR_PIN, OUTPUT);
   digitalWrite(CONTACTOR_PIN, LOW);
 
@@ -163,7 +181,7 @@ void setup()
   setupNanoTelemetry();
   setupBLE();
 
-  xTaskCreatePinnedToCore(backgroundTask, "BackgroundCore0", 4096, NULL, 1, &NanoTelemetryHandle, 0);
+  xTaskCreatePinnedToCore(backgroundTask, "BackgroundCore0", 8192, NULL, 1, &NanoTelemetryHandle, 0);
 
   Serial.println("\n--- System Setup Complete. Waiting for initial interval... ---");
 }
@@ -351,14 +369,14 @@ void updateSystemControl()
       }
 
       sysMetrics.avgSoc = (bms1Data.soc + bms2Data.soc) / 2;
-      sysMetrics.socDelta = abs(bms1Data.soc - bms2Data.soc);
+      sysMetrics.socDelta = std::abs(bms1Data.soc - bms2Data.soc);
       sysMetrics.minVoltage = (bms1Data.voltage < bms2Data.voltage) ? bms1Data.voltage : bms2Data.voltage;
-      sysMetrics.voltageDelta = abs(bms1Data.voltage - bms2Data.voltage);
+      sysMetrics.voltageDelta = std::abs(bms1Data.voltage - bms2Data.voltage);
       sysMetrics.peakTemp = (bms1Data.maxTemp > bms2Data.maxTemp) ? bms1Data.maxTemp : bms2Data.maxTemp;
       sysMetrics.netCurrent = bms1Data.current + bms2Data.current;
-      sysMetrics.currentDelta = abs(bms1Data.current - bms2Data.current);
+      sysMetrics.currentDelta = std::abs(bms1Data.current - bms2Data.current);
       sysMetrics.netPower = bms1Data.power + bms2Data.power;
-      sysMetrics.powerDelta = abs(bms1Data.power - bms2Data.power);
+      sysMetrics.powerDelta = std::abs(bms1Data.power - bms2Data.power);
 
       if (sysMetrics.netCurrent > 1.0)
         sysMetrics.status = STATUS_CHARGING;
@@ -444,6 +462,7 @@ void backgroundTask(void *parameter)
       sysMetrics.nano_connected = sensorData.nano_connected;
       sysMetrics.fan_speed = fanSpeed;
       bool desiredRelayState = currentRelayState;
+      bool needWarning = false;
 
       if (sysMetrics.graceStatus == GRACE_EXPIRED)
       {
@@ -458,15 +477,25 @@ void backgroundTask(void *parameter)
         else if (sysMetrics.avgSoc < TURN_OFF_SOC)
         {
           desiredRelayState = false;
-          if (currentRelayState == true) {
-            Serial.println("[WARNING] Battery low! Requesting contactor open.");
+          if (currentRelayState == true)
+          {
+            // note that we want to print a warning, but do it after releasing mutex
+            needWarning = true;
           }
         }
       }
 
-      updateRelayState(desiredRelayState);
-      sysMetrics.relayClosed = currentRelayState;
+      // Store the desired state in metrics and release the mutex quickly
+      sysMetrics.relayClosed = desiredRelayState;
       xSemaphoreGive(metricsMutex);
+
+      // Perform slow I/O and hardware switching outside the mutex
+      if (needWarning)
+      {
+        Serial.println("[WARNING] Battery low! Requesting contactor open.");
+      }
+
+      updateRelayState(desiredRelayState);
     }
 
     ledcWrite(FAN_PWM_CHANNEL, fanSpeed);

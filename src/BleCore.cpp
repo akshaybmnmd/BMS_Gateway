@@ -14,39 +14,64 @@ void resetBmsState(BmsData *bms);
 
 static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t length, bool isNotify)
 {
-  if (activeBms == nullptr)
+  if (activeBms == nullptr || length == 0)
     return;
 
   for (size_t i = 0; i < length; i++)
   {
     if (activeBms->bufferIdx < BMS_BUFFER_SIZE)
       activeBms->buffer[activeBms->bufferIdx++] = pData[i];
+    else
+    {
+      // Buffer full; drop remaining bytes to avoid overflow
+      break;
+    }
   }
 
-  if (pData[length - 1] == 0x77)
+  // Ensure we can safely inspect the last byte of the incoming packet
+  if (length > 0 && pData[length - 1] == 0x77)
   {
+    // Basic header/length validation: need at least 24 bytes for baseline parsing
     if (activeBms->bufferIdx > 23 && activeBms->buffer[0] == 0xDD && activeBms->buffer[1] == 0x03)
     {
-      activeBms->voltage = ((activeBms->buffer[4] << 8) | activeBms->buffer[5]) * 0.01;
-      int16_t rawCurrent = (activeBms->buffer[6] << 8) | activeBms->buffer[7];
-      activeBms->current = rawCurrent * 0.01;
+      // Parse only when we have the expected minimum bytes
+      activeBms->voltage = (((uint16_t)activeBms->buffer[4] << 8) | activeBms->buffer[5]) * 0.01f;
+      int16_t rawCurrent = (((int16_t)activeBms->buffer[6] << 8) | activeBms->buffer[7]);
+      activeBms->current = rawCurrent * 0.01f;
       activeBms->soc = activeBms->buffer[23];
       activeBms->power = activeBms->voltage * activeBms->current;
 
+      // NTC count may be untrusted; compute max possible based on buffer size
       uint8_t ntcCount = activeBms->buffer[26];
-      float highestTemp = -100.0;
-
-      if (ntcCount > 0 && activeBms->bufferIdx >= (27 + (ntcCount * 2)))
+      uint8_t maxNtc = 0;
+      if (activeBms->bufferIdx > 27)
       {
-        for (int i = 0; i < ntcCount; i++)
+        maxNtc = (activeBms->bufferIdx - 27) / 2;
+      }
+      if (ntcCount > maxNtc)
+      {
+        // Cap ntcCount to avoid out-of-bounds access
+        ntcCount = maxNtc;
+      }
+
+      float highestTemp = -100.0f;
+
+      if (ntcCount > 0)
+      {
+        for (uint8_t i = 0; i < ntcCount; i++)
         {
-          uint16_t rawTemp = (activeBms->buffer[27 + (i * 2)] << 8) | activeBms->buffer[28 + (i * 2)];
-          float celsius = (rawTemp / 10.0) - 273.15;
-          if (celsius > highestTemp)
-            highestTemp = celsius;
+          size_t hiIdx = 27 + (i * 2);
+          size_t loIdx = hiIdx + 1;
+          if (loIdx < activeBms->bufferIdx)
+          {
+            uint16_t rawTemp = (((uint16_t)activeBms->buffer[hiIdx] << 8) | activeBms->buffer[loIdx]);
+            float celsius = (rawTemp / 10.0f) - 273.15f;
+            if (celsius > highestTemp)
+              highestTemp = celsius;
+          }
         }
       }
-      activeBms->maxTemp = (highestTemp > -50.0) ? highestTemp : 0.0;
+      activeBms->maxTemp = (highestTemp > -50.0f) ? highestTemp : 0.0f;
 
       activeBms->isConnected = true;
       activeBms->dataReady = true;
