@@ -47,7 +47,7 @@ struct BmsData
   int lastSoC;
   bool isConnected;
   bool dataReady;
-  uint8_t buffer[64];
+  uint8_t buffer[BMS_BUFFER_SIZE];
   size_t bufferIdx;
   unsigned long lastUpdateTime;
 };

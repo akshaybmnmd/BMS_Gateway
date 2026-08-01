@@ -59,6 +59,45 @@ void updateSystemControl();
 void backgroundTask(void *parameter);
 void updateRelayState(bool desiredState);
 
+namespace
+{
+GracePeriodStatus lastReportedGraceStatus = GRACE_NONE;
+
+void updateReportedRelayState(bool relayClosed)
+{
+  if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+  {
+    sysMetrics.relayClosed = relayClosed;
+    xSemaphoreGive(metricsMutex);
+  }
+  else
+  {
+    Serial.println("[WARN] Unable to update reported contactor state.");
+  }
+}
+
+void reportGraceStatusTransition(GracePeriodStatus graceStatus)
+{
+  if (graceStatus == lastReportedGraceStatus)
+    return;
+
+  switch (graceStatus)
+  {
+  case GRACE_ACTIVE:
+    Serial.println("[WARNING] BLE connection lost. Operating in GRACE_ACTIVE state.");
+    break;
+  case GRACE_EXPIRED:
+    Serial.println("[CRITICAL ERROR] BMS data timed out (5+ min). Defaulting to safe state.");
+    break;
+  case GRACE_NONE:
+    Serial.println("[INFO] BMS data connection recovered.");
+    break;
+  }
+
+  lastReportedGraceStatus = graceStatus;
+}
+} // namespace
+
 void processSerialCommands()
 {
   char cmdBuf[64];
@@ -236,7 +275,7 @@ void loop()
     break;
 
   case STATE_DELAY_BMS1:
-    if (millis() - stateTimer >= 500)
+    if (millis() - stateTimer >= BMS_DELAY_MS)
     {
       if (triggerBmsRead())
       {
@@ -291,7 +330,7 @@ void loop()
     break;
 
   case STATE_DELAY_BMS2:
-    if (millis() - stateTimer >= 500)
+    if (millis() - stateTimer >= BMS_DELAY_MS)
     {
       if (triggerBmsRead())
       {
@@ -345,16 +384,17 @@ void updateRelayState(bool autoDesiredState)
   if (millis() - lastRelaySwitchTime >= RELAY_COOLDOWN_MS)
   {
     digitalWrite(CONTACTOR_PIN, finalDesiredState ? HIGH : LOW);
-    currentRelayState = finalDesiredState;
+    currentRelayState = digitalRead(CONTACTOR_PIN) == HIGH;
     lastRelaySwitchTime = millis();
+    updateReportedRelayState(currentRelayState);
 
     if (manualOverride)
     {
-      Serial.printf("\n[OVERRIDE] Contactor physically forced to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
+      Serial.printf("\n[OVERRIDE] Contactor output set to: %s\n", currentRelayState ? "CLOSED" : "OPEN");
     }
     else
     {
-      Serial.printf("\n[INFO] Auto-Logic Contactor switched to: %s\n", finalDesiredState ? "CLOSED" : "OPEN");
+      Serial.printf("\n[INFO] Auto-logic contactor output set to: %s\n", currentRelayState ? "CLOSED" : "OPEN");
     }
   }
 }
@@ -386,11 +426,6 @@ void updateSystemControl()
 
     if (sysMetrics.graceStatus != GRACE_EXPIRED)
     {
-      if (sysMetrics.graceStatus == GRACE_ACTIVE)
-      {
-        Serial.println("\n[WARNING] BLE connection lost. Operating in GRACE_ACTIVE state.");
-      }
-
       sysMetrics.avgSoc = (bms1Data.soc + bms2Data.soc) / 2;
       sysMetrics.socDelta = std::abs(bms1Data.soc - bms2Data.soc);
       sysMetrics.minVoltage = (bms1Data.voltage < bms2Data.voltage) ? bms1Data.voltage : bms2Data.voltage;
@@ -411,13 +446,14 @@ void updateSystemControl()
     else
     {
       sysMetrics.status = STATUS_ERROR;
-      Serial.println("\n[CRITICAL ERROR] BMS Data Timeout (5+ min). Defaulting to safe state.");
     }
 
     // Capture a thread-safe snapshot for the slow I/O operations
     SystemMetrics metricsForIO = sysMetrics;
 
     xSemaphoreGive(metricsMutex);
+
+    reportGraceStatusTransition(metricsForIO.graceStatus);
 
     // Send telemetry via UART to the Wi-Fi node using the snapshot
     sendTelemetryToWiFi(metricsForIO);
@@ -518,8 +554,6 @@ void backgroundTask(void *parameter)
         }
       }
 
-      // Store the desired state in metrics and release the mutex quickly
-      sysMetrics.relayClosed = desiredRelayState;
       xSemaphoreGive(metricsMutex);
 
       // Perform slow I/O and hardware switching outside the mutex

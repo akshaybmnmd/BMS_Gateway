@@ -6,22 +6,23 @@
 extern SemaphoreHandle_t metricsMutex;
 
 SensorTelemetry sensorData = {};
-unsigned long lastSerialRx = 0;
-const int NANO_RX_PIN = 16;
-const int NANO_TX_PIN = 17;
-const int NANO_BAUD = 9600;
+static unsigned long lastSerialRx = 0;
+constexpr int NANO_RX_PIN = 16;
+constexpr int NANO_TX_PIN = 17;
+constexpr int NANO_BAUD = 9600;
+constexpr unsigned long NANO_RESET_PULSE_MS = 50;
 
 // Non-blocking reset scheduler state
 static bool nanoResetPending = false;
 static unsigned long nanoResetReleaseAt = 0;
 
-static void _scheduleNanoResetRelease(unsigned long when)
+static void scheduleNanoResetRelease(unsigned long when)
 {
   nanoResetPending = true;
   nanoResetReleaseAt = when;
 }
 
-void clearNanoTelemetry();
+bool clearNanoTelemetry();
 
 void setupNanoTelemetry()
 {
@@ -39,18 +40,8 @@ void resetNano()
 {
   Serial.println("[SYSTEM] Triggering hardware reset on Nano (non-blocking)...");
 
-  // Drive reset low and schedule release without blocking
   digitalWrite(NANO_RST_PIN, LOW);
-  // schedule a release after 50 ms
-  static unsigned long releaseTime = 0;
-  releaseTime = millis() + 50;
-
-  // Store pending release time in static variables accessible to the processing loop
-  // We'll use module-level statics declared below to track the pending reset
-  (void)releaseTime; // releaseTime mirrored into module state by setting below
-
-  // Set module-level pending flag and expiry
-  _scheduleNanoResetRelease(millis() + 50);
+  scheduleNanoResetRelease(millis() + NANO_RESET_PULSE_MS);
 
   lastSerialRx = millis();
 }
@@ -118,13 +109,16 @@ void processNanoTelemetry()
     }
   }
 
-  // Check for telemetry timeout while holding mutex briefly when clearing
-  if (sensorData.nano_connected && (millis() - lastSerialRx > SERIAL_TIMEOUT_MS))
+  bool nanoTelemetryTimedOut = false;
+  if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+  {
+    nanoTelemetryTimedOut = sensorData.nano_connected && (millis() - lastSerialRx > SERIAL_TIMEOUT_MS);
+    xSemaphoreGive(metricsMutex);
+  }
+
+  if (nanoTelemetryTimedOut && clearNanoTelemetry())
   {
     Serial.println("[WARNING] Nano Serial Telemetry Timeout!");
-
-    clearNanoTelemetry();
-
     resetNano();
   }
 
@@ -138,16 +132,14 @@ void processNanoTelemetry()
   }
 }
 
-void clearNanoTelemetry()
+bool clearNanoTelemetry()
 {
   if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
   {
     sensorData = {};
     xSemaphoreGive(metricsMutex);
+    return true;
   }
-  else
-  {
-    // Best-effort clear if mutex cannot be obtained
-    sensorData = {};
-  }
+
+  return false;
 }
