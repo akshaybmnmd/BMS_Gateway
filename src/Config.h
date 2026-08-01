@@ -50,6 +50,10 @@ struct BmsData
   uint8_t buffer[BMS_BUFFER_SIZE];
   size_t bufferIdx;
   unsigned long lastUpdateTime;
+  float remainingCapacityAh;
+  uint16_t cycleCount;
+  bool chargeMosEnabled;
+  bool dischargeMosEnabled;
 };
 
 enum SystemStatus
@@ -65,6 +69,21 @@ enum GracePeriodStatus
   GRACE_NONE,   // BLE is connected, data is live
   GRACE_ACTIVE, // BLE dropped, operating safely on cached data (< 5 mins old)
   GRACE_EXPIRED // Timeout exceeded, data is dangerously stale
+};
+
+struct BmsMetrics
+{
+  float voltage;
+  float current;
+  float power;
+  float maxTemp;
+  float remainingCapacityAh;
+  int soc;
+  uint16_t cycleCount;
+  bool isConnected;
+  bool chargeMosEnabled;
+  bool dischargeMosEnabled;
+  unsigned long lastUpdateTime;
 };
 
 struct SystemMetrics
@@ -96,6 +115,8 @@ struct SystemMetrics
   bool nano_connected;
   bool relayClosed;
   int fan_speed;
+  BmsMetrics bms1;
+  BmsMetrics bms2;
 };
 
 static const char *statusToString(SystemStatus status)

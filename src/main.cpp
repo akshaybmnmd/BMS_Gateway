@@ -63,39 +63,55 @@ namespace
 {
 GracePeriodStatus lastReportedGraceStatus = GRACE_NONE;
 
+BmsMetrics makeBmsMetricsSnapshot(const BmsData &bms)
+{
+  return {
+      bms.voltage,
+      bms.current,
+      bms.power,
+      bms.maxTemp,
+      bms.remainingCapacityAh,
+      bms.soc,
+      bms.cycleCount,
+      bms.isConnected,
+      bms.chargeMosEnabled,
+      bms.dischargeMosEnabled,
+      bms.lastUpdateTime};
+}
+
 void updateReportedRelayState(bool relayClosed)
-{
-  if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
   {
-    sysMetrics.relayClosed = relayClosed;
-    xSemaphoreGive(metricsMutex);
-  }
-  else
-  {
-    Serial.println("[WARN] Unable to update reported contactor state.");
-  }
-}
-
-void reportGraceStatusTransition(GracePeriodStatus graceStatus)
-{
-  if (graceStatus == lastReportedGraceStatus)
-    return;
-
-  switch (graceStatus)
-  {
-  case GRACE_ACTIVE:
-    Serial.println("[WARNING] BLE connection lost. Operating in GRACE_ACTIVE state.");
-    break;
-  case GRACE_EXPIRED:
-    Serial.println("[CRITICAL ERROR] BMS data timed out (5+ min). Defaulting to safe state.");
-    break;
-  case GRACE_NONE:
-    Serial.println("[INFO] BMS data connection recovered.");
-    break;
+    if (xSemaphoreTake(metricsMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    {
+      sysMetrics.relayClosed = relayClosed;
+      xSemaphoreGive(metricsMutex);
+    }
+    else
+    {
+      Serial.println("[WARN] Unable to update reported contactor state.");
+    }
   }
 
-  lastReportedGraceStatus = graceStatus;
-}
+  void reportGraceStatusTransition(GracePeriodStatus graceStatus)
+  {
+    if (graceStatus == lastReportedGraceStatus)
+      return;
+
+    switch (graceStatus)
+    {
+    case GRACE_ACTIVE:
+      Serial.println("[WARNING] BLE connection lost. Operating in GRACE_ACTIVE state.");
+      break;
+    case GRACE_EXPIRED:
+      Serial.println("[CRITICAL ERROR] BMS data timed out (5+ min). Defaulting to safe state.");
+      break;
+    case GRACE_NONE:
+      Serial.println("[INFO] BMS data connection recovered.");
+      break;
+    }
+
+    lastReportedGraceStatus = graceStatus;
+  }
 } // namespace
 
 void processSerialCommands()
@@ -156,7 +172,7 @@ void processSerialCommands()
 
 void sendTelemetryToWiFi(const SystemMetrics &metrics)
 {
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
 
   doc["acV1"] = metrics.acVoltage;
   doc["acI1"] = metrics.acCurrent;
@@ -169,14 +185,22 @@ void sendTelemetryToWiFi(const SystemMetrics &metrics)
   doc["dcI"] = metrics.dcCurrent;
   doc["dcW"] = metrics.dcPower;
 
-  doc["bms1V"] = bms1Data.voltage;
-  doc["bms1I"] = bms1Data.current;
-  doc["bms1Soc"] = bms1Data.soc;
-  doc["bms1Tmp"] = bms1Data.maxTemp;
-  doc["bms2V"] = bms2Data.voltage;
-  doc["bms2I"] = bms2Data.current;
-  doc["bms2Soc"] = bms2Data.soc;
-  doc["bms2Tmp"] = bms2Data.maxTemp;
+  doc["bms1V"] = metrics.bms1.voltage;
+  doc["bms1I"] = metrics.bms1.current;
+  doc["bms1Soc"] = metrics.bms1.soc;
+  doc["bms1Tmp"] = metrics.bms1.maxTemp;
+  doc["bms1RemAh"] = metrics.bms1.remainingCapacityAh;
+  doc["bms1Cycles"] = metrics.bms1.cycleCount;
+  doc["bms1ChgMos"] = metrics.bms1.chargeMosEnabled;
+  doc["bms1DisMos"] = metrics.bms1.dischargeMosEnabled;
+  doc["bms2V"] = metrics.bms2.voltage;
+  doc["bms2I"] = metrics.bms2.current;
+  doc["bms2Soc"] = metrics.bms2.soc;
+  doc["bms2Tmp"] = metrics.bms2.maxTemp;
+  doc["bms2RemAh"] = metrics.bms2.remainingCapacityAh;
+  doc["bms2Cycles"] = metrics.bms2.cycleCount;
+  doc["bms2ChgMos"] = metrics.bms2.chargeMosEnabled;
+  doc["bms2DisMos"] = metrics.bms2.dischargeMosEnabled;
 
   doc["netI"] = metrics.netCurrent;
   doc["netW"] = metrics.netPower;
@@ -411,6 +435,9 @@ void updateSystemControl()
     bool bms1Live = bms1Valid && bms1Data.isConnected;
     bool bms2Live = bms2Valid && bms2Data.isConnected;
 
+    sysMetrics.bms1 = makeBmsMetricsSnapshot(bms1Data);
+    sysMetrics.bms2 = makeBmsMetricsSnapshot(bms2Data);
+
     if (bms1Live && bms2Live)
     {
       sysMetrics.graceStatus = GRACE_NONE;
@@ -492,9 +519,12 @@ void backgroundTask(void *parameter)
 
     // 1. Calculate Ambient Fan Requirement
     int envFanSpeed = 0;
-    if (currentEnvTemp >= FAN_FULL_TEMP) {
+    if (currentEnvTemp >= FAN_FULL_TEMP)
+    {
       envFanSpeed = FAN_MAX_DUTY;
-    } else if (currentEnvTemp >= FAN_START_TEMP) {
+    }
+    else if (currentEnvTemp >= FAN_START_TEMP)
+    {
       float tempRange = FAN_FULL_TEMP - FAN_START_TEMP;
       float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
       envFanSpeed = (int)((float)FAN_MIN_DUTY + ((currentEnvTemp - FAN_START_TEMP) * (pwmRange / tempRange)));
@@ -502,9 +532,12 @@ void backgroundTask(void *parameter)
 
     // 2. Calculate ESP32 Core Fan Requirement
     int espFanSpeed = 0;
-    if (currentEspTemp >= ESP_FAN_FULL_TEMP) {
+    if (currentEspTemp >= ESP_FAN_FULL_TEMP)
+    {
       espFanSpeed = FAN_MAX_DUTY;
-    } else if (currentEspTemp >= ESP_FAN_START_TEMP) {
+    }
+    else if (currentEspTemp >= ESP_FAN_START_TEMP)
+    {
       float tempRange = ESP_FAN_FULL_TEMP - ESP_FAN_START_TEMP;
       float pwmRange = (float)(FAN_MAX_DUTY - FAN_MIN_DUTY);
       espFanSpeed = (int)((float)FAN_MIN_DUTY + ((currentEspTemp - ESP_FAN_START_TEMP) * (pwmRange / tempRange)));

@@ -1,8 +1,8 @@
 #include "BleCore.h"
 #include <NimBLEDevice.h>
 
-BmsData bms1Data = {1, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, {0}, 0, 1};
-BmsData bms2Data = {2, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, {0}, 0, 1};
+BmsData bms1Data = {1, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, {0}, 0, 1, 0.0f, 0, false, false};
+BmsData bms2Data = {2, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, false, false, {0}, 0, 1, 0.0f, 0, false, false};
 BmsData *activeBms = nullptr;
 
 NimBLEClient *pClient = nullptr;
@@ -31,14 +31,18 @@ static void notifyCB(NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t l
   // Ensure we can safely inspect the last byte of the incoming packet
   if (length > 0 && pData[length - 1] == 0x77)
   {
-    // Basic header/length validation: need at least 24 bytes for baseline parsing
-    if (activeBms->bufferIdx > 23 && activeBms->buffer[0] == 0xDD && activeBms->buffer[1] == 0x03)
+    // Require all fixed basic-information fields through the NTC count byte.
+    if (activeBms->bufferIdx > 26 && activeBms->buffer[0] == 0xDD && activeBms->buffer[1] == 0x03)
     {
-      // Parse only when we have the expected minimum bytes
       activeBms->voltage = (((uint16_t)activeBms->buffer[4] << 8) | activeBms->buffer[5]) * 0.01f;
       int16_t rawCurrent = (((int16_t)activeBms->buffer[6] << 8) | activeBms->buffer[7]);
       activeBms->current = rawCurrent * 0.01f;
+      activeBms->remainingCapacityAh = (((uint16_t)activeBms->buffer[8] << 8) | activeBms->buffer[9]) * 0.01f;
+      activeBms->cycleCount = ((uint16_t)activeBms->buffer[12] << 8) | activeBms->buffer[13];
       activeBms->soc = activeBms->buffer[23];
+      const uint8_t mosState = activeBms->buffer[24];
+      activeBms->chargeMosEnabled = (mosState & 0x01) != 0;
+      activeBms->dischargeMosEnabled = (mosState & 0x02) != 0;
       activeBms->power = activeBms->voltage * activeBms->current;
 
       // NTC count may be untrusted; compute max possible based on buffer size
